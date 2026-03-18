@@ -1,12 +1,18 @@
 import sqlite3
 import os
 
-"""creating database file paths"""
+
+
+
+
+
 
 
 
 class fighter_database:
 
+
+    '''database file paths '''
 
 
     DB_PATHS ={
@@ -44,9 +50,6 @@ class fighter_database:
     def __repr__(self) -> str:
         return f"fighter_database(sport ='{self.sport}', db= '{self.db_path}')"
         
-
-
-
 
 
 
@@ -263,19 +266,9 @@ class fighter_database:
 
         self._conn.close()
         print (f"[{self.sport.upper()}] Database connection closed")
+    
 
 
 
-from fighter_database import FighterDB
 
-# Standard usage
-kb = FighterDB("kickboxing")
-fid = kb.add_fighter("Jordan Blake", age=22, weight=70.5)
-kb.update_record(fid, wins=1)
-kb.print_fighter(kb.get_fighter(fid))
-kb.close()
 
-# Or as a context manager (auto-closes)
-with FighterDB("mma") as mma:
-    fid = mma.add_fighter("Alex Torres", age=25, weight=77.1)
-    mma.update_record(fid, wins=2, losses=1)
