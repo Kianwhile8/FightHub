@@ -261,9 +261,10 @@
 </head>
 <body>
  
-<div class="shell">
+<div class="shell"> 
+  
  
-  <!-- ── sidebar ── -->
+  <!-- ── creating sidebar ── -->
   <aside class="sidebar">
     <div class="sidebar-logo">Fight<span>DB</span></div>
  
@@ -292,3 +293,212 @@
     </div>
   </aside>
  
+  <!-- ── main ── -->
+  <main class="main">
+ 
+    <!-- home page/dashboard  -->
+    <div id="page-dashboard" class="page active">
+      <h1>Dashboard</h1>
+      <div class="stat-grid">
+        <div class="stat"><div class="stat-val" id="stat-total">—</div><div class="stat-lbl">Total fighters</div></div>
+        <div class="stat"><div class="stat-val" id="stat-kb">—</div><div class="stat-lbl">Kickboxing</div></div>
+        <div class="stat"><div class="stat-val" id="stat-mma">—</div><div class="stat-lbl">MMA</div></div>
+        <div class="stat"><div class="stat-val" id="stat-box">—</div><div class="stat-lbl">Boxing</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div class="card">
+          <h2>Recent fighters</h2>
+          <div id="dashboard-list"><div class="empty" style="padding:1rem 0">Loading…</div></div>
+        </div>
+        <div class="card">
+          <h2>Upcoming events</h2>
+          <div id="dashboard-events"><div class="empty" style="padding:1rem 0">Loading…</div></div>
+        </div>
+      </div>
+    </div>
+ 
+    <!-- fighters -->
+    <div id="page-fighters" class="page">
+      <h1>Fighters</h1>
+      <div class="toolbar">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="6.5" cy="6.5" r="4"/><line x1="10" y1="10" x2="14" y2="14"/>
+          </svg>
+          <input id="fighter-search" type="text" placeholder="Search by name…" oninput="renderFighters()">
+        </div>
+        <div class="chips" id="sport-chips">
+          <button class="chip active" data-sport="all">All</button>
+          <button class="chip" data-sport="kickboxing">Kickboxing</button>
+          <button class="chip" data-sport="mma">MMA</button>
+          <button class="chip" data-sport="boxing">Boxing</button>
+        </div>
+      </div>
+      <div class="card" style="padding:0 1.25rem">
+        <div id="fighters-list"><div class="empty" style="padding:2rem">Loading…</div></div>
+      </div>
+    </div>
+ 
+    <!-- events -->
+    <div id="page-events" class="page">
+      <h1>Events</h1>
+      <div class="chips" id="event-chips" style="margin-bottom:1rem">
+        <button class="chip active" data-when="all">All</button>
+        <button class="chip" data-when="upcoming">Upcoming</button>
+        <button class="chip" data-when="past">Past</button>
+      </div>
+      <div id="events-list"><div class="empty">Loading…</div></div>
+    </div>
+ 
+    <!-- fight history -->
+    <div id="page-history" class="page">
+      <h1>Fight history</h1>
+      <div class="chips" id="hist-chips" style="margin-bottom:1rem">
+        <button class="chip active" data-sport="all">All</button>
+        <button class="chip" data-sport="kickboxing">Kickboxing</button>
+        <button class="chip" data-sport="mma">MMA</button>
+        <button class="chip" data-sport="boxing">Boxing</button>
+      </div>
+      <div class="card" style="padding:0 1.25rem">
+        <div id="history-list"><div class="empty" style="padding:2rem">Loading…</div></div>
+      </div>
+    </div>
+ 
+    <!-- my profile -->
+    <div id="page-profile" class="page">
+      <h1>My profile</h1>
+      <div id="profile-content"><div class="empty">Loading…</div></div>
+    </div>
+ 
+    <!-- matchmake -->
+    <div id="page-matchmake" class="page">
+      <h1>Matchmake</h1>
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Sport</label>
+            <select id="mm-sport" onchange="loadMMFighters()">
+              <option value="kickboxing">Kickboxing</option>
+              <option value="mma">MMA</option>
+              <option value="boxing">Boxing</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fighter</label>
+            <select id="mm-fighter" onchange="runMatchmake()"></select>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="padding:0" id="match-results">
+        <div class="empty" style="padding:2rem">Select a fighter to see suggested opponents.</div>
+      </div>
+    </div>
+ 
+    <!-- add fighter -->
+    <div id="page-add-fighter" class="page">
+      <h1>Add fighter</h1>
+      <div class="card" style="max-width:480px">
+        <div class="form-group"><label class="form-label">Full name</label>
+          <input id="af-name" type="text" placeholder="e.g. Jordan Blake"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Age</label>
+            <input id="af-age" type="number" min="16" max="60" placeholder="22"></div>
+          <div class="form-group"><label class="form-label">Weight (kg)</label>
+            <input id="af-weight" type="number" min="40" max="150" step="0.1" placeholder="70.5"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Sport</label>
+          <select id="af-sport">
+            <option value="kickboxing">Kickboxing</option>
+            <option value="mma">MMA</option>
+            <option value="boxing">Boxing</option>
+          </select></div>
+        <button class="btn btn-primary" onclick="submitAddFighter()">Add fighter</button>
+      </div>
+    </div>
+ 
+    <!-- add event page  (only coach and promoter) -->
+    <div id="page-add-event" class="page">
+      <h1>Add event</h1>
+      <div class="card" style="max-width:560px">
+        <div class="form-group"><label class="form-label">Event name</label>
+          <input id="ae-name" type="text" placeholder="e.g. Summer Showdown 2025"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Date</label>
+            <input id="ae-date" type="date"></div>
+          <div class="form-group"><label class="form-label">Time</label>
+            <input id="ae-time" type="time" value="19:00"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Venue</label>
+          <select id="ae-venue"></select></div>
+        <div class="form-group"><label class="form-label">Sports featured</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" id="ae-kb" value="kickboxing"> Kickboxing</label>
+            <label><input type="checkbox" id="ae-mma" value="mma"> MMA</label>
+            <label><input type="checkbox" id="ae-box" value="boxing"> Boxing</label>
+          </div></div>
+        <div class="form-group"><label class="form-label">Description (optional)</label>
+          <textarea id="ae-desc" placeholder="Any additional details…"></textarea></div>
+        <button class="btn btn-primary" onclick="submitAddEvent()">Create event</button>
+      </div>
+    </div>
+ 
+    <!-- add venue page  (promoter only) -->
+    <div id="page-add-venue" class="page">
+      <h1>Add venue</h1>
+      <div class="card" style="max-width:480px">
+        <div class="form-group"><label class="form-label">Venue name</label>
+          <input id="av-name" type="text" placeholder="e.g. City Sports Hall"></div>
+        <div class="form-group"><label class="form-label">Address</label>
+          <input id="av-addr" type="text" placeholder="123 Main St, City"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Town / City</label>
+            <input id="av-city" type="text" placeholder="Manchester"></div>
+          <div class="form-group"><label class="form-label">Capacity</label>
+            <input id="av-cap" type="number" placeholder="500" min="1"></div>
+        </div>
+        <button class="btn btn-primary" onclick="submitAddVenue()">Add venue</button>
+      </div>
+    </div>
+ 
+    <!-- fighter details -->
+    <div id="page-fighter-detail" class="page">
+      <button class="back-btn" onclick="goBack()">← Back</button>
+      <div id="fighter-detail-content"></div>
+    </div>
+ 
+    <!-- event details -->
+    <div id="page-event-detail" class="page">
+      <button class="back-btn" onclick="goBack()">← Back to events</button>
+      <div id="event-detail-content"></div>
+    </div>
+ 
+    <!-- fight logging -->
+    <div id="page-add-fight" class="page">
+      <button class="back-btn" onclick="goBack()">← Back to fighter</button>
+      <h1>Log fight</h1>
+      <div class="card" style="max-width:480px">
+        <div class="form-group"><label class="form-label">Opponent name</label>
+          <input id="fight-opponent" type="text" placeholder="Opponent's name"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Result</label>
+            <select id="fight-result">
+              <option value="W">Win</option>
+              <option value="L">Loss</option>
+              <option value="D">Draw</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Method</label>
+            <select id="fight-method">
+              <option>Decision</option><option>KO</option><option>TKO</option>
+              <option>Submission</option><option>Disqualification</option>
+            </select></div>
+        </div>
+        <div class="form-group"><label class="form-label">Date</label>
+          <input id="fight-date" type="date"></div>
+        <button class="btn btn-primary" onclick="submitAddFight()">Log fight</button>
+      </div>
+    </div>
+ 
+  </main>
+</div>
+ 
+<div class="toast" id="toast"></div>
