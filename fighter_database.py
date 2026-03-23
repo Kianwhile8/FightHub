@@ -53,14 +53,10 @@ class fighter_database:
 
 
 
-
-
     def create_tables(self) -> sqlite3.connection:
 
         """creating tables for each sport"""
 
-
-       
 
         self._conn.executescript(f"""CREATE TABLE IF NOT EXISTS {self.sport}_fighters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,9 +77,6 @@ class fighter_database:
         """)
         self._conn.commit()
 
-
-
-
     
     @staticmethod
     def _row_to_dict(row: tuple) -> dict:
@@ -101,13 +94,6 @@ class fighter_database:
         conn = sqlite3.connect(self.db_path)
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
-    
-
-
-
-
-
-
 
     def add_fighter(self, name:str, age:int, weight: float) -> int:
         """adding new ighter and initilises their record as 0-0-0
@@ -127,10 +113,6 @@ class fighter_database:
         self._conn.commit()
         print(f"[{self.sport.upper()}] added fighter: {name} (ID {fighter_id})")
         return fighter_id
- 
-
-
-
 
     def update_record(self,
                       fighter_id: int,
@@ -156,10 +138,6 @@ class fighter_database:
                 f"with {wins} wins, {losses} losses, and {draws} draws")
         
 
-
-
-
-
     def get_fighter(self, fighter_id: int) -> dict | None:
 
 
@@ -175,10 +153,6 @@ class fighter_database:
         row = cursor.fetchtone()
         return self._row_to_dict(row) if row else None
     
-
-       
-
-       
 
     def get_all_fighters(self) -> list[dict]:
 
@@ -209,12 +183,6 @@ class fighter_database:
                 ORDER BY f.name
         """, (f"%{name_query}%",))
         return [self._row_to_dict(row) for row in cursor.fetchall()] 
-    
-    
-        
-
-
-
    
 
 
@@ -231,20 +199,56 @@ class fighter_database:
         print (f"[{self.sport.upper()}] Deleted fighter ID {fighter_id} from {self.sport} database" )
   
 
+    def add_fight(self,fighter_id:int, opponent_name: str,
+                  result:str, method:str = "decision",
+                  fight_Date: str = None) -> int:
+        '''logs and automates fight results to update fighters records'''
 
-
-    def delete_fighter(self, fighter_id:int) -> None:
-    
-        """permamntly deletes a fighter and their record from the database"""
-
-        cursor = self._conn.cursor()
-        cursor.execute ("DELETE FROM fighters WHERE id = ?", (fighter_id,))
-        if cursor.rowcount ==0:
-            raise ValueError(
-                f" no fighter with id {fighter_id} in {self.sport} database"
-            )
+        result = result.upper()
+        if result not in ("W", "L", "D"):
+            raise ValueError ("reults must be W, L, or D")
+        fight_date = fight_Date or str(_date.today())
+        cur = self._conn.cursor()
+        cur.execute ("""INSERT INTO fight_history (fighter_id, opponent_name, result, method, fight_date)
+                        VALUES (?, ?, ?, ?, ?)""", (fighter_id, opponent_name, result, method, fight_date))
         self._conn.commit()
-        print (f" [{self.sport.upper()}] deleted fighter ID {fighter_id}")
+        return cur.lastrowid
+        self._conn.commit()
+        self.update_Record (fighter_id,
+                            wins = 1 if result == "W" else 0,
+                            losses = 1 if results == "L" else 0,
+                            draws =1 if results == "D" else 0)
+        return fight_id
+    
+    def get_fight_history(self, fighter_id: int) -> list[dict]:
+
+        '''returns a selected fighter's fight history'''
+
+        cur = self._conn.cursor()
+        cur.execute ("""
+                     SELECT id, opponent_name, result, method, date FROM fight_history
+                     WHERE fighter_id=? ORDER by date DESC""", (fighter_id,))
+        return [
+            {"id":r[0], "opponent": r[1], "result": r[2], "method": r[3], "date": r[4]}
+            for r in cur.fetchall()
+        ]
+    
+    def get_all_fights(self) -> list [dict]:
+
+        '''returns every fight in the database'''
+        cur = self._conn.cursor()
+        cur.execute("""
+                    SELECT fh.id, f.name, FH.opponent_name, fh result,
+                    fh.method, fh.date
+                    FROM fight_history fh
+                    JOIN fighters f ON fh.fighter_id = f.id
+                    ORDER by fh.date DESC
+                    """)
+        return [
+            {"id": r[0], "fighter": r[1], "opponent": r[2], "result": r[3], "method": r[4], "date": r[5]}
+            for r in cur.fetchall()
+        ]
+
 
 
     def print_fighter(self, fighter: dict) -> None:
@@ -261,6 +265,9 @@ class fighter_database:
         print(f"Total: {total}")
 
     def close (self) -> None:
+
+
+
 
         """closes the database connection"""
 
