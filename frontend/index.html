@@ -502,3 +502,559 @@
 </div>
  
 <div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let allFighters  = [];
+let allFights    = [];
+let allEvents    = [];
+let allVenues    = [];
+let currentRole  = 'fighter';
+let sportFilter  = 'all';
+let histFilter   = 'all';
+let eventFilter  = 'all';
+let pageHistory  = [];
+let activeFighter = null;
+let activeEvent   = null;
+ 
+// ── local "databases" for events & venues (replace with API calls later) ──────
+// Stored in memory; in production these become Flask endpoints.
+ 
+function saveEvents() { try { sessionStorage.setItem('fdb_events', JSON.stringify(allEvents)); } catch(e){} }
+function saveVenues() { try { sessionStorage.setItem('fdb_venues', JSON.stringify(allVenues)); } catch(e){} }
+function loadLocalData() {
+  try {
+    const ev = sessionStorage.getItem('fdb_events');
+    const ve = sessionStorage.getItem('fdb_venues');
+    if (ev) allEvents = JSON.parse(ev);
+    if (ve) allVenues = JSON.parse(ve);
+  } catch(e) {}
+  if (!allVenues.length) {
+    allVenues = [
+      {id:1, name:"City Sports Hall",    address:"14 Arena Way", city:"Manchester", capacity:800},
+      {id:2, name:"Riverside Fight Club",address:"2 Dock St",    city:"Liverpool",  capacity:300},
+      {id:3, name:"The Apex Centre",     address:"99 High Rd",   city:"Birmingham", capacity:600},
+    ];
+  }
+  if (!allEvents.length) {
+    const today = new Date();
+    const fmt = d => d.toISOString().slice(0,10);
+    const future1 = new Date(today); future1.setDate(today.getDate()+14);
+    const future2 = new Date(today); future2.setDate(today.getDate()+42);
+    const past1   = new Date(today); past1.setDate(today.getDate()-21);
+    allEvents = [
+      {id:1, name:"Summer Showdown 2025", date:fmt(future1), time:"19:00",
+       venueId:1, sports:["kickboxing","boxing"], desc:"Amateur regional championship.", organiserRole:"promoter"},
+      {id:2, name:"Riverside Open",       date:fmt(future2), time:"18:30",
+       venueId:2, sports:["mma"],              desc:"Open MMA card, all levels welcome.", organiserRole:"coach"},
+      {id:3, name:"Spring Throwdown",     date:fmt(past1),   time:"20:00",
+       venueId:3, sports:["kickboxing","mma","boxing"], desc:"Multi-discipline event.", organiserRole:"promoter"},
+    ];
+  }
+}
+ 
+// ── utilities
+
+const $ = id => document.getElementById(id);
+const initials = name => name.trim().split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+ 
+function sportBadge(sport) {
+  const cls = {kickboxing:'badge-kb', mma:'badge-mma', boxing:'badge-box'}[sport]||'';
+  return `<span class="badge ${cls}">${sport}</span>`;
+}
+ 
+function toast(msg, dur=2400) {
+  const t = $('toast'); t.textContent = msg;
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), dur);
+}
+ 
+async function apiFetch(path, opts={}) {
+  const res = await fetch(API+path, {headers:{'Content-Type':'application/json'}, ...opts});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error||'Request failed');
+  return data;
+}
+ 
+// ── navigation 
+
+function showPage(pageId, pushHistory=true) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const page = $('page-'+pageId);
+  if (!page) return;
+  page.classList.add('active');
+  if (pushHistory) pageHistory.push(pageId);
+  document.querySelectorAll('.nav-item[data-page]').forEach(b=>
+    b.classList.toggle('active', b.dataset.page===pageId));
+}
+ 
+function goBack() {
+  pageHistory.pop();
+  const prev = pageHistory[pageHistory.length-1]||'dashboard';
+  showPage(prev, false);
+}
+ 
+document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
+  btn.addEventListener('click', ()=>{ showPage(btn.dataset.page); refresh(btn.dataset.page); });
+});
+ 
+// ── role
+
+function setRole(role) {
+  currentRole = role;
+  document.body.className = 'role-' + role;
+  document.querySelectorAll('.role-btn').forEach(b =>
+    b.classList.toggle('active', b.textContent.toLowerCase() === role));
+  // Navigate to the right default page for each role
+  const defaultPage = role === 'fighter' ? 'dashboard' : 'dashboard';
+  showPage(defaultPage);
+  refresh(defaultPage);
+}
+ 
+// ── data
+
+async function loadAll() {
+  const sports = ['kickboxing','mma','boxing'];
+  const [fighters, fights] = await Promise.all([
+    Promise.all(sports.map(s=>apiFetch(`/api/${s}/fighters`))),
+    Promise.all(sports.map(s=>apiFetch(`/api/${s}/fights`)))
+  ]);
+  allFighters = fighters.flatMap(r=>r.fighters.map(f=>({...f, sport:r.sport})));
+  allFights   = fights.flatMap(r=>r.fights.map(f=>({...f, sport:r.sport})));
+}
+ 
+async function loadStats() {
+  const data = await apiFetch('/api/stats');
+  $('stat-total').textContent = data.total;
+  $('stat-kb').textContent    = data.kickboxing;
+  $('stat-mma').textContent   = data.mma;
+  $('stat-box').textContent   = data.boxing;
+}
+ 
+function refresh(page) {
+  if (page==='dashboard')  { loadStats(); renderDashboard(); }
+  if (page==='fighters')   renderFighters();
+  if (page==='events')     renderEvents();
+  if (page==='matchmake')  loadMMFighters();
+  if (page==='history')    renderHistory();
+  if (page==='profile')    renderProfile();
+  if (page==='add-event')  populateVenueSelect();
+}
+ 
+// ── dashboard 
+
+function renderDashboard() {
+  const list = $('dashboard-list');
+  list.innerHTML = allFighters.length
+    ? allFighters.slice(0,5).map(f=>miniRow(f)).join('')
+    : '<div class="empty" style="padding:1rem 0">No fighters yet.</div>';
+  attachFighterRowListeners($('dashboard-list'));
+ 
+  const upcoming = allEvents
+    .filter(e=>new Date(e.date) >= new Date())
+    .sort((a,b)=>new Date(a.date)-new Date(b.date))
+    .slice(0,3);
+  $('dashboard-events').innerHTML = upcoming.length
+    ? upcoming.map(e=>miniEventRow(e)).join('')
+    : '<div class="empty" style="padding:1rem 0">No upcoming events.</div>';
+  $('dashboard-events').querySelectorAll('[data-eid]').forEach(el=>
+    el.addEventListener('click', ()=>openEventDetail(parseInt(el.dataset.eid))));
+}
+ 
+function miniRow(f) {
+  return `<div class="fighter-row" data-id="${f.id}" data-sport="${f.sport}" style="padding:8px 0">
+    <div class="avatar" style="width:32px;height:32px;font-size:11px">${initials(f.name)}</div>
+    <div class="fighter-info">
+      <div class="fighter-name" style="font-size:13px">${f.name} ${sportBadge(f.sport)}</div>
+    </div>
+    <span class="record-badge" style="font-size:12px">${f.wins}-${f.losses}-${f.draws}</span>
+  </div>`;
+}
+ 
+function miniEventRow(e) {
+  const d = new Date(e.date);
+  const day = d.getDate();
+  const mon = d.toLocaleString('en',{month:'short'});
+  return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" data-eid="${e.id}">
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 9px;text-align:center;flex-shrink:0">
+      <div style="font-size:16px;font-weight:700;line-height:1">${day}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase">${mon}</div>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.name}</div>
+      <div style="font-size:12px;color:var(--muted)">${venueById(e.venueId)?.city||'TBC'}</div>
+    </div>
+  </div>`;
+}
+ 
+// ── fighter list
+
+document.querySelectorAll('#sport-chips .chip').forEach(chip=>{
+  chip.addEventListener('click',()=>{
+    document.querySelectorAll('#sport-chips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active'); sportFilter=chip.dataset.sport; renderFighters();
+  });
+});
+ 
+function fighterRowHTML(f) {
+  return `<div class="fighter-row" data-id="${f.id}" data-sport="${f.sport}">
+    <div class="avatar">${initials(f.name)}</div>
+    <div class="fighter-info">
+      <div class="fighter-name">${f.name} ${sportBadge(f.sport)}</div>
+      <div class="fighter-meta">Age ${f.age} · ${f.weight_kg} kg</div>
+    </div>
+    <span class="record-badge">${f.wins}-${f.losses}-${f.draws}</span>
+  </div>`;
+}
+ 
+function attachFighterRowListeners(container) {
+  container.querySelectorAll('.fighter-row').forEach(row=>
+    row.addEventListener('click',()=>openFighterDetail(row.dataset.id, row.dataset.sport)));
+}
+ 
+function renderFighters() {
+  const q = ($('fighter-search').value||'').toLowerCase();
+  let list = allFighters;
+  if (sportFilter!=='all') list=list.filter(f=>f.sport===sportFilter);
+  if (q) list=list.filter(f=>f.name.toLowerCase().includes(q));
+  const el=$('fighters-list');
+  el.innerHTML = list.length ? list.map(f=>fighterRowHTML(f)).join('')
+    : '<div class="empty" style="padding:2rem">No fighters found.</div>';
+  attachFighterRowListeners(el);
+}
+ 
+// ── events page 
+
+document.querySelectorAll('#event-chips .chip').forEach(chip=>{
+  chip.addEventListener('click',()=>{
+    document.querySelectorAll('#event-chips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active'); eventFilter=chip.dataset.when; renderEvents();
+  });
+});
+ 
+function eventStatus(dateStr) {
+  const d = new Date(dateStr); const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const evDay  = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (evDay.getTime()===today.getTime()) return 'today';
+  return d >= now ? 'upcoming' : 'past';
+}
+ 
+function venueById(id) { return allVenues.find(v=>v.id===id); }
+ 
+function renderEvents() {
+  let list = [...allEvents].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if (eventFilter==='upcoming') list=list.filter(e=>eventStatus(e.date)!=='past');
+  if (eventFilter==='past')     list=list.filter(e=>eventStatus(e.date)==='past');
+  const el=$('events-list');
+  if (!list.length) { el.innerHTML='<div class="empty">No events found.</div>'; return; }
+  el.innerHTML = list.map(e=>{
+    const d   = new Date(e.date);
+    const day = d.getDate();
+    const mon = d.toLocaleString('en',{month:'short'});
+    const st  = eventStatus(e.date);
+    const stLabel = st==='today'?'Today':st==='upcoming'?'Upcoming':'Past';
+    const venue = venueById(e.venueId);
+    return `<div class="event-card" data-eid="${e.id}">
+      <div class="event-card-header">
+        <div class="event-date-block">
+          <div class="event-day">${day}</div>
+          <div class="event-month">${mon}</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+            <div class="event-title">${e.name}</div>
+            <span class="event-status status-${st}">${stLabel}</span>
+          </div>
+          <div class="event-meta">
+            ${e.time} · ${venue ? venue.name+', '+venue.city : 'Venue TBC'}
+          </div>
+          <div class="event-sports">${e.sports.map(s=>sportBadge(s)).join('')}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.event-card').forEach(card=>
+    card.addEventListener('click',()=>openEventDetail(parseInt(card.dataset.eid))));
+}
+ 
+function openEventDetail(id) {
+  activeEvent = id;
+  const e = allEvents.find(ev=>ev.id===id);
+  if (!e) return;
+  const venue  = venueById(e.venueId);
+  const st     = eventStatus(e.date);
+  const stLabel= st==='today'?'Today':st==='upcoming'?'Upcoming':'Past';
+  const d      = new Date(e.date);
+  const dateStr= d.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const isMgmt = currentRole==='coach'||currentRole==='promoter';
+ 
+  $('event-detail-content').innerHTML = `
+    <div class="event-detail-banner">
+      <h2>${e.name}</h2>
+      <div class="event-detail-meta">${dateStr} · ${e.time} · <span style="text-transform:capitalize">${stLabel}</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+      <div class="card" style="margin:0">
+        <h2 style="font-size:14px;margin-bottom:.75rem">Venue</h2>
+        ${venue ? `<div class="venue-block">
+          <div class="venue-icon">⌂</div>
+          <div>
+            <div class="venue-name">${venue.name}</div>
+            <div class="venue-addr">${venue.address}, ${venue.city}</div>
+            ${venue.capacity ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">Capacity: ${venue.capacity.toLocaleString()}</div>` : ''}
+          </div>
+        </div>` : '<div style="color:var(--muted);font-size:13px">Venue TBC</div>'}
+      </div>
+      <div class="card" style="margin:0">
+        <h2 style="font-size:14px;margin-bottom:.75rem">Sports featured</h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${e.sports.map(s=>sportBadge(s)).join('')}</div>
+        ${e.desc ? `<p style="font-size:13px;color:var(--muted);margin-top:.75rem">${e.desc}</p>` : ''}
+      </div>
+    </div>
+    ${isMgmt ? `<div class="btn-row">
+      <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})">Delete event</button>
+    </div>` : ''}`;
+ 
+  showPage('event-detail');
+}
+ 
+function deleteEvent(id) {
+  if (!confirm('Delete this event?')) return;
+  allEvents = allEvents.filter(e=>e.id!==id);
+  saveEvents();
+  toast('Event deleted');
+  goBack();
+  renderEvents();
+}
+ 
+// ── add event for promoters and coaches 
+
+function populateVenueSelect() {
+  $('ae-venue').innerHTML = allVenues.length
+    ? allVenues.map(v=>`<option value="${v.id}">${v.name}, ${v.city}</option>`).join('')
+    : '<option value="">No venues yet — add one first</option>';
+}
+ 
+function submitAddEvent() {
+  const name = $('ae-name').value.trim();
+  const date = $('ae-date').value;
+  const time = $('ae-time').value;
+  const vid  = parseInt($('ae-venue').value);
+  const sports = ['kickboxing','mma','boxing'].filter(s=>$('ae-'+s.slice(0,2)==='ki'?'ae-kb':s==='mma'?'ae-mma':'ae-box').checked);
+  // fix sport id mapping
+  const sportIds = [];
+  if ($('ae-kb').checked)  sportIds.push('kickboxing');
+  if ($('ae-mma').checked) sportIds.push('mma');
+  if ($('ae-box').checked) sportIds.push('boxing');
+  if (!name||!date||!vid||!sportIds.length) { toast('Please fill in all required fields'); return; }
+  const newEvent = {
+    id: Date.now(), name, date, time: time||'19:00',
+    venueId: vid, sports: sportIds,
+    desc: $('ae-desc').value.trim(),
+    organiserRole: currentRole,
+  };
+  allEvents.push(newEvent);
+  saveEvents();
+  toast(`Event "${name}" created`);
+  $('ae-name').value=''; $('ae-date').value=''; $('ae-desc').value='';
+  $('ae-kb').checked=$('ae-mma').checked=$('ae-box').checked=false;
+  showPage('events'); renderEvents();
+}
+ 
+// ── add venue only accessable for promoters and coaches 
+
+function submitAddVenue() {
+  const name = $('av-name').value.trim();
+  const addr = $('av-addr').value.trim();
+  const city = $('av-city').value.trim();
+  const cap  = parseInt($('av-cap').value)||0;
+  if (!name||!city) { toast('Venue name and city are required'); return; }
+  const v = {id: Date.now(), name, address: addr, city, capacity: cap};
+  allVenues.push(v);
+  saveVenues();
+  toast(`Venue "${name}" added`);
+  $('av-name').value=''; $('av-addr').value=''; $('av-city').value=''; $('av-cap').value='';
+}
+ 
+// ── fighter details
+
+async function openFighterDetail(id, sport) {
+  activeFighter = {id:parseInt(id), sport};
+  showPage('fighter-detail');
+  const [fighter, histData] = await Promise.all([
+    apiFetch(`/api/${sport}/fighters/${id}`),
+    apiFetch(`/api/${sport}/fighters/${id}/fights`)
+  ]);
+  const total   = fighter.wins+fighter.losses+fighter.draws||1;
+  const winRate = Math.round(fighter.wins/total*100);
+  const isCoach = currentRole==='coach';
+ 
+  $('fighter-detail-content').innerHTML = `
+    <div class="detail-header">
+      <div class="detail-avatar">${initials(fighter.name)}</div>
+      <div>
+        <div style="font-size:20px;font-weight:600">${fighter.name}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:3px">Age ${fighter.age} · ${fighter.weight_kg} kg · ${sportBadge(sport)}</div>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div class="stat"><div class="stat-val">${fighter.wins}</div><div class="stat-lbl">Wins</div></div>
+      <div class="stat"><div class="stat-val">${fighter.losses}</div><div class="stat-lbl">Losses</div></div>
+      <div class="stat"><div class="stat-val">${fighter.draws}</div><div class="stat-lbl">Draws</div></div>
+      <div class="stat"><div class="stat-val">${winRate}%</div><div class="stat-lbl">Win rate</div></div>
+    </div>
+    ${isCoach ? `<div class="btn-row">
+      <button class="btn btn-sm btn-primary" onclick="goLogFight()">+ Log fight</button>
+      <button class="btn btn-sm btn-danger"  onclick="confirmDelete(${fighter.id},'${sport}')">Delete fighter</button>
+    </div>` : ''}
+    <div class="card" style="padding:0 1.25rem">
+      <div style="padding:.75rem 0;font-weight:600;font-size:14px">Fight history</div>
+      ${histData.fights.length
+        ? histData.fights.map(h=>`
+          <div class="history-row">
+            <span class="result-${h.result.toLowerCase()}">${h.result}</span>
+            <span style="flex:1;font-weight:500">vs ${h.opponent}</span>
+            <span style="color:var(--muted)">${h.method}</span>
+            <span style="color:var(--muted);font-size:12px">${h.date}</span>
+          </div>`).join('')
+        : '<div class="empty" style="padding:1.5rem">No fights logged yet.</div>'}
+    </div>`;
+}
+ 
+function goLogFight() { $('fight-date').valueAsDate=new Date(); showPage('add-fight'); }
+ 
+async function submitAddFight() {
+  const opponent = $('fight-opponent').value.trim();
+  if (!opponent) { toast('Enter opponent name'); return; }
+  try {
+    await apiFetch(`/api/${activeFighter.sport}/fighters/${activeFighter.id}/fights`,{
+      method:'POST',
+      body:JSON.stringify({opponent_name:opponent, result:$('fight-result').value,
+                           method:$('fight-method').value, date:$('fight-date').value})
+    });
+    toast('Fight logged');
+    $('fight-opponent').value='';
+    await loadAll();
+    goBack();
+    openFighterDetail(activeFighter.id, activeFighter.sport);
+  } catch(e) { toast('Error: '+e.message); }
+}
+ 
+async function confirmDelete(id, sport) {
+  if (!confirm('Delete this fighter? This cannot be undone.')) return;
+  try {
+    await apiFetch(`/api/${sport}/fighters/${id}`,{method:'DELETE'});
+    toast('Fighter deleted'); await loadAll(); goBack();
+  } catch(e) { toast('Error: '+e.message); }
+}
+ 
+// ── matchmaking only accessable for promoters and coaches 
+
+async function loadMMFighters() {
+  const sport=$('mm-sport').value;
+  const data=await apiFetch(`/api/${sport}/fighters`);
+  $('mm-fighter').innerHTML=data.fighters.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+  runMatchmake();
+}
+ 
+async function runMatchmake() {
+  const sport=$('mm-sport').value, fid=$('mm-fighter').value;
+  if(!fid) return;
+  const data=await apiFetch(`/api/${sport}/fighters/${fid}/matches`);
+  const el=$('match-results');
+  if(!data.matches.length){el.innerHTML='<div class="empty" style="padding:2rem">No other fighters in this sport yet.</div>';return;}
+  const fighter=allFighters.find(f=>f.id==fid&&f.sport===sport);
+  el.innerHTML=data.matches.map(m=>{
+    const cls=m.match_score>=75?'score-high':m.match_score>=50?'score-mid':'score-low';
+    return `<div class="match-card">
+      <div class="match-info">
+        <div class="match-names">${fighter?fighter.name:'?'} <span style="color:var(--muted);font-weight:400">vs</span> ${m.name}</div>
+        <div class="match-meta">${fighter?fighter.weight_kg:'?'}kg · ${fighter?[fighter.wins,fighter.losses,fighter.draws].join('-'):''} &nbsp;vs&nbsp; ${m.weight_kg}kg · ${[m.wins,m.losses,m.draws].join('-')} · diff: ${m.weight_diff}kg</div>
+      </div>
+      <span class="match-score-pill ${cls}">${m.match_score}% match</span>
+    </div>`;
+  }).join('');
+}
+ 
+// ── bout history for fighters 
+
+document.querySelectorAll('#hist-chips .chip').forEach(chip=>{
+  chip.addEventListener('click',()=>{
+    document.querySelectorAll('#hist-chips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active'); histFilter=chip.dataset.sport; renderHistory();
+  });
+});
+ 
+function renderHistory() {
+  let list=allFights;
+  if(histFilter!=='all') list=list.filter(h=>h.sport===histFilter);
+  const el=$('history-list');
+  el.innerHTML=list.length?list.map(h=>`
+    <div class="history-row">
+      <span class="result-${h.result.toLowerCase()}">${h.result}</span>
+      <span style="flex:1;font-weight:500">${h.fighter} vs ${h.opponent}</span>
+      <span style="color:var(--muted)">${h.method}</span>
+      ${sportBadge(h.sport)}
+      <span style="color:var(--muted);font-size:12px">${h.date}</span>
+    </div>`).join('')
+    :'<div class="empty" style="padding:2rem">No fights logged yet.</div>';
+}
+ 
+// ── profile functions 
+function renderProfile() {
+  const f=allFighters.find(f=>f.sport==='kickboxing')||allFighters[0];
+  if(!f){$('profile-content').innerHTML='<div class="empty">No fighter found.</div>';return;}
+  const total=f.wins+f.losses+f.draws||1;
+  const winRate=Math.round(f.wins/total*100);
+  $('profile-content').innerHTML=`
+    <div class="card">
+      <div class="detail-header">
+        <div class="detail-avatar">${initials(f.name)}</div>
+        <div>
+          <div style="font-size:20px;font-weight:600">${f.name}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:3px">Age ${f.age} · ${f.weight_kg} kg · ${sportBadge(f.sport)}</div>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="stat"><div class="stat-val">${f.wins}</div><div class="stat-lbl">Wins</div></div>
+        <div class="stat"><div class="stat-val">${f.losses}</div><div class="stat-lbl">Losses</div></div>
+        <div class="stat"><div class="stat-val">${f.draws}</div><div class="stat-lbl">Draws</div></div>
+        <div class="stat"><div class="stat-val">${winRate}%</div><div class="stat-lbl">Win rate</div></div>
+      </div>
+    </div>`;
+}
+ 
+// ── add fighter funciton 
+
+async function submitAddFighter() {
+  const name=($('af-name').value||'').trim();
+  const age=parseInt($('af-age').value);
+  const weight=parseFloat($('af-weight').value);
+  const sport=$('af-sport').value;
+  if(!name||!age||!weight){toast('Please fill in all fields');return;}
+  try {
+    await apiFetch(`/api/${sport}/fighters`,{method:'POST',body:JSON.stringify({name,age,weight})});
+    toast(`${name} added to ${sport}`);
+    $('af-name').value=''; $('af-age').value=''; $('af-weight').value='';
+    await loadAll(); renderDashboard();
+  } catch(e){toast('Error: '+e.message);}
+}
+ 
+// ── boot 
+(async()=>{
+  document.body.className = 'role-fighter';  // default role
+  loadLocalData();
+  try {
+    await loadAll();
+    renderDashboard();
+    await loadMMFighters();
+  } catch(e) {
+    console.warn('API unavailable:', e.message);
+    $('dashboard-list').innerHTML=`<div class="empty">Could not connect to API.<br>Make sure Flask is running on port 5000.</div>`;
+  }
+  renderEvents();
+  populateVenueSelect();
+})();
+</script>
+</body>
+</html>
