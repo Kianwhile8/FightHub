@@ -22,8 +22,8 @@ os.makedirs(DB_DIR, exist_ok=True)
 VALID_SPORTS = ("kickboxing", "mma", "boxing")
 
 
-def get_db(sport: str) -> FighterDB:
-    return FighterDB(sport, db_dir=DB_DIR)
+def get_db(sport: str) -> fighter_database:
+    return fighter_database(sport, db_dir=DB_DIR)
 
 def err(msg: str, status: int = 400):
     return jsonify({"error": msg}), status

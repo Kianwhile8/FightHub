@@ -1,3 +1,4 @@
+from datetime import datetime
 import sqlite3
 import os
 
@@ -207,7 +208,7 @@ class fighter_database:
         result = result.upper()
         if result not in ("W", "L", "D"):
             raise ValueError ("reults must be W, L, or D")
-        fight_date = fight_Date or str(_date.today())
+        fight_date = fight_Date or str(datetime.date.today())
         cur = self._conn.cursor()
         cur.execute ("""INSERT INTO fight_history (fighter_id, opponent_name, result, method, fight_date)
                         VALUES (?, ?, ?, ?, ?)""", (fighter_id, opponent_name, result, method, fight_date))

@@ -221,3 +221,77 @@ def _score_age (a:dict, b:dict) ->float:
 
 
 #public API integration 
+
+def match_score(
+    fighter:          dict,
+    fighter_elo:      float,
+    fighter_history:  list[dict],
+    opponent:         dict,
+    opponent_elo:     float,
+    opponent_history: list[dict],
+) -> int:
+    """
+    Compute a compatibility score (0-100) between two fighters.
+ 
+ 
+    Returns
+    -------
+    int  0 = terrible match,  100 = ideal match
+    """
+    a = _profile(fighter,  fighter_history,  fighter_elo)
+    b = _profile(opponent, opponent_history, opponent_elo)
+ 
+    raw = (
+        _score_weight(a, b)       * weight_W       +
+        _score_elo(a, b)          * elo_w          +
+        _score_record(a, b)       * record_w       +
+        _score_method(a, b)       * method_W      +
+        _score_opp_quality(a, b)  * opp_quality_w  +
+        _score_experience(a, b)   * experience_w   +
+        _score_recent_form(a, b)  * recent_form_w  +
+        _score_age(a, b)          * age_w
+    )
+ 
+    return round(raw * 100)
+ 
+ 
+def rank_opponents(
+    fighter:         dict,
+    fighter_history: list[dict],
+    candidates:      list[dict],
+) -> list[dict]:
+    """
+    Score and rank every candidate opponent against the target fighter.
+ 
+    ELO ratings for the entire pool (fighter + all candidates) are computed
+    together first so that shared fight results are reflected correctly.
+ 
+
+    """
+    # Build the full pool so ELO is computed consistently across everyone
+    all_fighters  = [fighter] + [c["fighter"] for c in candidates]
+    all_histories = {fighter["id"]: fighter_history}
+    for c in candidates:
+        all_histories[c["fighter"]["id"]] = c["history"]
+ 
+    elo_ratings = compute_elo_for_pool(all_fighters, all_histories)
+ 
+    fighter_elo = elo_ratings[fighter["id"]]
+ 
+    results = []
+    for c in candidates:
+        opp      = c["fighter"]
+        opp_elo  = elo_ratings[opp["id"]]
+        score    = match_score(
+            fighter,        fighter_elo,  fighter_history,
+            opp,            opp_elo,      c["history"],
+        )
+        results.append({
+            **opp,
+            "elo":          opp_elo,
+            "match_score":  score,
+            "weight_diff":  round(abs(fighter["weight_kg"] - opp["weight_kg"]), 1),
+        })
+ 
+    results.sort(key=lambda x: x["match_score"], reverse=True)
+    return results
