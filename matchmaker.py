@@ -178,3 +178,46 @@ def _profile (fighter:dict, history:list[dict], elo:float) -> dict:
     }
 
 
+#individual factor scores
+
+
+def _score_weight(a:dict, b:dict) -> float:
+    '''full score at 0kg difference, 0 at 10kg difference'''
+    return max (0.0,1.0 - abs(a["weight_kg"] - b ["weight_kg"]) / 10.0)
+
+def _score_elo(a:dict, b:dict) -> float:
+    ''' elo proximity score. uses a 400 point window so the factore feels natural. 
+    same system uses by elo expected score formula'''
+
+    diff = abs(a["elo"] - b["elo"])
+    return max(0.0, 1.0 - diff / 400.0)
+
+def _score_record (a:dict, b:dict) ->float:
+    '''win/loss recorded similarly based on raw win rate.
+    compliemtns ELO ensures that opponents are matched appropriately'''
+
+    return 1.0 - abs(a["win_rate"] - b["win_rate"])
+
+def _score_method (a:dict, b:dict) ->float:
+    ''' beating a similarly scored profile scores higher'''
+    return 1.0 - abs(a["finish_score"] - b["finish_score"])
+
+def _score_opp_quality (a:dict, b:dict) ->float:
+    '''penalises large gaps in quality to protect fighter scores'''
+    return 1.0 - abs(a["opp_quality_score"] - b["opp_quality_score"])
+
+def _score_experience (a:dict, b:dict) ->float:
+    '''full score at 0 fight gap, zero at 10+ fights'''
+    return max(0.0,1.0 - abs(a["total"] - b ["total"])/10.0)
+
+def _score_recent_form (a:dict, b: dict) ->float:
+    """penalises mismatched momentum"""
+    return 1.0 - abs(a["recent_form"] - b["recent_form"])
+
+
+def _score_age (a:dict, b:dict) ->float:
+    '''full score at 0 year difference, zero at 10+ years'''
+    return max(0.0,1.0 - abs(a["age"] - b["age"])/10.0)
+
+
+#public API integration 
