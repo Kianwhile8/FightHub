@@ -10,7 +10,7 @@ all responses are json errors reutnr with appropriate status code
 
 
 from flask import Flask, jsonify, request, send_from_directory
-from fighter_database import fighter_database
+from fighter_database import FighterDB, FighterDB
 import os
 
 app = Flask(__name__, static_folder="frontend", static_url_path="")
@@ -22,8 +22,8 @@ os.makedirs(DB_DIR, exist_ok=True)
 VALID_SPORTS = ("kickboxing", "mma", "boxing")
 
 
-def get_db(sport: str) -> fighter_database:
-    return fighter_database(sport, db_dir=DB_DIR)
+def get_db(sport: str) -> FighterDB:
+    return FighterDB(sport, db_dir=DB_DIR)
 
 def err(msg: str, status: int = 400):
     return jsonify({"error": msg}), status
