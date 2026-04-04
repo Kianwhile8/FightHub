@@ -12,9 +12,10 @@ all responses are json errors reutnr with appropriate status code
 from flask import Flask, jsonify, request, send_from_directory
 from fighter_database import FighterDB, FighterDB
 import os
+from flask_cors import CORS
 
 app = Flask(__name__, static_folder="frontend", static_url_path="")
-
+CORS(app)
 
 DB_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DB_DIR, exist_ok=True)
@@ -171,7 +172,35 @@ def get_matches(sport, fighter_id):
         return jsonify({"fighter_id": fighter_id, "matches": matches})
     except ValueError as e:
         return err(str(e), 404)
+    
+    '''adding elo stats'''
 
+    @app.route("/api/<sport>/rankings", methods=["GET"])
+    def get_rankings(sport):
+        '''returns all fighters in a sport sorted by elo rating starting from the highest'''
+        if sport not in VALID_SPORTS:
+            return err(f"Unknown sport '{sport}'", 404)
+        try:
+            from matchmaker import compute_elo_for_pool
+            with get_db(sport) as db:
+                fighters = db.get_all_fighter()
+                histories = {f["id"]: db.get_fight_history(f["id"]) for f in fighters}
+
+                if not fighters:
+                    return jsonify({"sport": sport, "rankings": []})
+                elo_ratings = compute_elo_for_pool(fighters, histories)
+                ranked = sorted(
+                    [{**f, "elo": elo_ratings[f["id"]]} for f in fighters],
+                      key=lambda x: x["elo"], reverse=True
+                )
+
+                #positional number
+                for i, f in enumerate(ranked):
+                    f["rank"] = i + 1
+
+                return jsonify({"sport": sport, "rankings": ranked})
+        except Exception as e:
+            return err (str(e))
 
 '''function to validate statistics'''
 
