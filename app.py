@@ -9,19 +9,30 @@ all responses are json errors reutnr with appropriate status code
 
 
 
-from flask import Flask, jsonify, request, send_from_directory
-from fighter_database import FighterDB, FighterDB
+from flask import Flask, jsonify, request, send_from_directory, session
+from fighter_database import FighterDB
+from auth import authDB
 import os
-from flask_cors import CORS
+import functools
+
+
 
 app = Flask(__name__, static_folder="frontend", static_url_path="")
-CORS(app)
+app.secret_key = os.environ.get("FIGHTHUB_SECRET", "ABC123")
+
 
 DB_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DB_DIR, exist_ok=True)
 
 VALID_SPORTS = ("kickboxing", "mma", "boxing")
 
+
+#isngle shared authdb insatnce
+auth_db = authDB(db_dir=DB_DIR)
+
+
+
+# addition of helpers
 
 def get_db(sport: str) -> FighterDB:
     return FighterDB(sport, db_dir=DB_DIR)
@@ -36,16 +47,161 @@ def require_json(*fields):
         return None, err(f"Missing required fields: {', '.join(missing)}")
     return data, None
 
+def current_user() -> dict |None:
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    return auth_db.get_by_id(uid)
+
+# adding auth decorators
+
+def login_required(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if not current_user():
+            return err("Login required", 401)
+        return f(*args, **kwargs)
+    return wrapper
+
+
+
+
+def roles_requried(*roles):
+    '''restricts endpoints to certain roles'''
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            user = current_user()
+            if not user:
+                return err("Login required.", 401)
+            if user["role"] not in roles:
+                return err (f" Access denied. Required roles: {'or '.join(roles)}", 403)
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+    
 
 @app.route("/")
 def index():
     return send_from_directory("frontend", "index.html")
 
 
-'''creating fighter page'''
+
+'''creating auth endpoints'''
+
+@app.route("/api/auth/register", methods = ["POST"])
+def register():
+    data,error = require_json ("email", "password", "role")
+    if error:
+        return error
+    try:
+        user+ auth_db.register(
+            email = data["email"],
+            password = data["password"],
+            role = data["role"]
+        )
+        if data["role"] == "fighter" and data.get("fighter_id") and data.get("fighter_sport"):
+            user = auth_db.link_fighter(user["id"], int(data["fighter_id"]), data ["fighter_sport"])
+
+        session ["user_id"] = user["id"]
+        return jsonify ({"user": user}), 201
+    except ValueError as e:
+        return err(str(e))
+    
+
+@app.route("/api/auth/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return jsonify ({"message": "logged out."})
+
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def me():
+    '''returns logged in user. used by frontend page load.'''
+    user = current_user()
+    if not user:
+        return err(" not logged in.", 401)
+    if user ["role"] == "fighter" and user ["fighter_id"] and user["fighter_sport"]:
+        try:
+            with get_db(user["fighter_sport"]) as db:
+                user["fighter_record"] = db.get_fighter(user["fighter_id"])
+        except Exception:
+            user ["fighter_record"] = None
+        return jsonify ({"user": user})
+    
+
+@app.route ("/api/auth/link-fighter", methods=["POST"])
+@login_required
+def link_fighter():
+
+    '''allows figthters to link accounts to database records'''
+
+    user = current_user()
+    if user ["role"] != "fighter":
+        return err("Only fighters can link their accounts.", 403)
+    data, error = require_json ("fighter_id", "fighter_sport")
+    if error:
+        return error
+    try:
+        updated = auth_db.link_fighter(user["id"], int(data["fighter_id"]), data["fighter_sport"])
+        return jsonify ({"user": updated})
+    except ValueError as e:
+        return err(str(e))
+    
+
+@app.route("/api/auth/change-password", methods=["POST"])
+@login_required
+def change_password():
+    data, error = require_json ("old_password", "new_password")
+    if error:
+        return error
+    try:
+        auth_db.change_password(current_user()["id"], data["old_password"], data["new_password"])
+        return jsonify({"message": "Password changed successfully."})
+    except ValueError as e:
+        return err(str(e))
+    
+
+
+'''adding admin endpoints'''
+
+@app.route("/api/admin/users", methods=["GET"])
+@roles_requried("admin")
+def list_users():
+    return jsonify ({"users": auth_db.list_users()})
+
+@app.route("/api/admin/users/<int:user_id>/role", methods=["PUT"])
+@roles_requried ("admin")
+def admin_update_role(user_Id):
+    data = request.get_json(silent=True) or {}
+    if "role" not in data:
+        return err("missing field: role")
+    try:
+        updated = auth_db.update_role(user_Id, data["role"])
+        return jsonify ({"user": updated})
+    except  ValueError as e:
+        return err(str(e))
+    
+
+@app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
+@roles_requried ("admin")
+def admin_delete_user(user_id):
+    if user_id == current_user ()["id"]:
+        return err("cannot delete your own account")
+    try:
+        auth_db.delete_user(user_id)
+        return jsonify({"deleted": user_id})
+    except ValueError as e:
+        return err(str(e)), 404
+
+
+'''creating fighter endpoints, must be logged in '''
 
 
 @app.route("/api/<sport>/fighters", methods=["GET"])
+@login_required
 def list_fighters(sport):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -56,6 +212,7 @@ def list_fighters(sport):
 
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>", methods=["GET"])
+@login_required
 def get_fighter(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -67,6 +224,7 @@ def get_fighter(sport, fighter_id):
 
 
 @app.route("/api/<sport>/fighters", methods=["POST"])
+@roles_requried ("coach", "admin")
 def add_fighter(sport):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -87,6 +245,7 @@ def add_fighter(sport):
 
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>", methods=["PUT"])
+@roles_requried ("coach", "admin")
 def update_fighter(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -106,6 +265,7 @@ def update_fighter(sport, fighter_id):
 
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>", methods=["DELETE"])
+@roles_requried ("coach", "admin")
 def delete_fighter(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -121,6 +281,7 @@ def delete_fighter(sport, fighter_id):
 '''creating fight history'''
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>/fights", methods=["GET"])
+@login_required
 def get_fighter_fights(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -130,6 +291,7 @@ def get_fighter_fights(sport, fighter_id):
 
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>/fights", methods=["POST"])
+@roles_requried ("coach", "promoter", "admin")
 def add_fight(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -188,6 +350,7 @@ def get_matches(sport, fighter_id):
 
                 if not fighters:
                     return jsonify({"sport": sport, "rankings": []})
+                
                 elo_ratings = compute_elo_for_pool(fighters, histories)
                 ranked = sorted(
                     [{**f, "elo": elo_ratings[f["id"]]} for f in fighters],
