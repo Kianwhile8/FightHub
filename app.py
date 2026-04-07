@@ -189,7 +189,7 @@ def change_password():
 @app.route("/api/admin/users", methods=["GET"])
 @roles_requried("admin")
 def list_users():
-    return jsonify ({"users": auth_db.list_users()})
+    return jsonify ({"users": auth_db.get_all_users()})
 
 @app.route("/api/admin/users/<int:user_id>/role", methods=["PUT"])
 @roles_requried ("admin")
@@ -364,7 +364,7 @@ def get_rankings(sport):
     try:
         from matchmaker import compute_elo_for_pool
         with get_db(sport) as db:
-            fighters = db.get_all_fighter()
+            fighters = db.get_all_fighters()
             histories = {f["id"]: db.get_fight_history(f["id"]) for f in fighters}
 
             if not fighters:
