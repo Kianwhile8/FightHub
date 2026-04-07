@@ -65,7 +65,6 @@ def login_required(f):
 
 
 
-
 def roles_requried(*roles):
     '''restricts endpoints to certain roles'''
     def decorator(f):
@@ -96,7 +95,7 @@ def register():
     if error:
         return error
     try:
-        user+ auth_db.register(
+        user = auth_db.register(
             email = data["email"],
             password = data["password"],
             role = data["role"]
@@ -109,6 +108,26 @@ def register():
     except ValueError as e:
         return err(str(e))
     
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    data, error = require_json("email", "password")
+    if error:
+        return error
+    try:
+        user = auth_db.login(data["email"], data["password"])
+        session["user_id"] = user["id"]
+        if user["role"] == "fighter" and user["fighter_id"] and user["fighter_sport"]:
+            try:
+                with get_db(user["fighter_sport"]) as db:
+                    user["fighter_record"] = db.get_fighter(user["fighter_id"])
+            except Exception:
+                user["fighter_record"] = None
+            return jsonify
+    except ValueError as e:
+        return err(str(e)),401
+
+    roles_requried
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
@@ -129,7 +148,7 @@ def me():
                 user["fighter_record"] = db.get_fighter(user["fighter_id"])
         except Exception:
             user ["fighter_record"] = None
-        return jsonify ({"user": user})
+    return jsonify ({"user": user})
     
 
 @app.route ("/api/auth/link-fighter", methods=["POST"])
@@ -174,12 +193,12 @@ def list_users():
 
 @app.route("/api/admin/users/<int:user_id>/role", methods=["PUT"])
 @roles_requried ("admin")
-def admin_update_role(user_Id):
+def admin_update_role(user_id):
     data = request.get_json(silent=True) or {}
     if "role" not in data:
         return err("missing field: role")
     try:
-        updated = auth_db.update_role(user_Id, data["role"])
+        updated = auth_db.update_role(user_id, data["role"])
         return jsonify ({"user": updated})
     except  ValueError as e:
         return err(str(e))
@@ -337,33 +356,33 @@ def get_matches(sport, fighter_id):
     
     '''adding elo stats'''
 
-    @app.route("/api/<sport>/rankings", methods=["GET"])
-    def get_rankings(sport):
-        '''returns all fighters in a sport sorted by elo rating starting from the highest'''
-        if sport not in VALID_SPORTS:
-            return err(f"Unknown sport '{sport}'", 404)
-        try:
-            from matchmaker import compute_elo_for_pool
-            with get_db(sport) as db:
-                fighters = db.get_all_fighter()
-                histories = {f["id"]: db.get_fight_history(f["id"]) for f in fighters}
+@app.route("/api/<sport>/rankings", methods=["GET"])
+def get_rankings(sport):
+    '''returns all fighters in a sport sorted by elo rating starting from the highest'''
+    if sport not in VALID_SPORTS:
+        return err(f"Unknown sport '{sport}'", 404)
+    try:
+        from matchmaker import compute_elo_for_pool
+        with get_db(sport) as db:
+            fighters = db.get_all_fighter()
+            histories = {f["id"]: db.get_fight_history(f["id"]) for f in fighters}
 
-                if not fighters:
-                    return jsonify({"sport": sport, "rankings": []})
-                
-                elo_ratings = compute_elo_for_pool(fighters, histories)
-                ranked = sorted(
-                    [{**f, "elo": elo_ratings[f["id"]]} for f in fighters],
-                      key=lambda x: x["elo"], reverse=True
-                )
+            if not fighters:
+                return jsonify({"sport": sport, "rankings": []})
+            
+            elo_ratings = compute_elo_for_pool(fighters, histories)
+            ranked = sorted(
+                [{**f, "elo": elo_ratings[f["id"]]} for f in fighters],
+                    key=lambda x: x["elo"], reverse=True
+            )
 
-                #positional number
-                for i, f in enumerate(ranked):
-                    f["rank"] = i + 1
+            #positional number
+            for i, f in enumerate(ranked):
+                f["rank"] = i + 1
 
-                return jsonify({"sport": sport, "rankings": ranked})
-        except Exception as e:
-            return err (str(e))
+            return jsonify({"sport": sport, "rankings": ranked})
+    except Exception as e:
+        return err (str(e))
 
 '''function to validate statistics'''
 

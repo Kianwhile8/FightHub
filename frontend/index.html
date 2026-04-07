@@ -6,7 +6,7 @@
 <title>FightDB</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
- 
+
   :root {
     --bg:         #f5f5f3;
     --surface:    #ffffff;
@@ -24,13 +24,13 @@
     --radius:     10px;
     --shadow:     0 1px 3px rgba(0,0,0,.08);
   }
- 
+
   body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg);
          color: var(--text); font-size: 15px; line-height: 1.5; }
- 
+
   /* ── layout ── */
   .shell { display: flex; min-height: 100vh; }
- 
+
   .sidebar {
     width: 224px; flex-shrink: 0; background: var(--surface);
     border-right: 1px solid var(--border); padding: 1.5rem 1rem;
@@ -39,10 +39,10 @@
   }
   .sidebar-logo { font-size: 18px; font-weight: 600; padding: .5rem .75rem 1.25rem; letter-spacing: -.3px; }
   .sidebar-logo span { color: var(--muted); font-weight: 400; }
- 
+
   .nav-section { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
                  color: var(--muted); padding: .9rem .75rem .3rem; }
- 
+
   .nav-item {
     display: flex; align-items: center; gap: 10px; padding: .55rem .75rem;
     border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--muted);
@@ -52,7 +52,7 @@
   .nav-item:hover  { background: var(--bg); color: var(--text); }
   .nav-item.active { background: var(--text); color: #fff; }
   .nav-item .icon  { width: 16px; text-align: center; font-style: normal; flex-shrink: 0; }
- 
+
   .role-section { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); }
   .role-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
                 color: var(--muted); margin-bottom: .5rem; display: block; }
@@ -63,28 +63,28 @@
     color: var(--muted); transition: background .12s, color .12s; white-space: nowrap;
   }
   .role-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
- 
+
   .main { flex: 1; padding: 2rem; max-width: 880px; }
   .page { display: none; }
   .page.active { display: block; }
- 
+
   h1 { font-size: 22px; font-weight: 600; margin-bottom: 1.5rem; }
   h2 { font-size: 16px; font-weight: 600; margin-bottom: .75rem; }
- 
-  /* ── cards ── */
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
-    box-shadow: var(--shadow);
-  }
- 
+
   /* ── stat grid ── */
   .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 1.5rem; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
           padding: 1rem; text-align: center; box-shadow: var(--shadow); }
   .stat-val { font-size: 26px; font-weight: 600; }
   .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
- 
+
+    /* ── cards ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
+    box-shadow: var(--shadow);
+  }
+
   /* ── fighter rows ── */
   .fighter-row {
     display: flex; align-items: center; gap: 12px; padding: 10px 0;
@@ -100,7 +100,7 @@
   .fighter-meta { font-size: 12px; color: var(--muted); margin-top: 1px; }
   .fighter-info { flex: 1; min-width: 0; }
   .record-badge { font-size: 13px; font-weight: 600; color: var(--muted); }
- 
+
   /* ── event cards ── */
   .event-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -124,7 +124,7 @@
   .status-upcoming { background: var(--info-bg);    color: var(--info); }
   .status-past     { background: #f3f4f6;            color: #6b7280; }
   .status-today    { background: var(--success-bg);  color: var(--success); }
- 
+
   /* ── event detail ── */
   .event-detail-banner {
     background: var(--text); color: #fff; border-radius: var(--radius);
@@ -136,13 +136,13 @@
   .venue-icon  { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
   .venue-name  { font-weight: 600; font-size: 15px; }
   .venue-addr  { font-size: 13px; color: var(--muted); margin-top: 2px; }
- 
+
   /* ── badges ── */
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500; white-space: nowrap; }
   .badge-kb  { background: #ede9fe; color: #5b21b6; }
   .badge-mma { background: #fee2e2; color: #991b1b; }
   .badge-box { background: #d1fae5; color: #065f46; }
- 
+
   /* ── forms ── */
   .form-group { margin-bottom: .875rem; }
   .form-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
@@ -158,7 +158,7 @@
   .checkbox-group { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
   .checkbox-group label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
   .checkbox-group input[type=checkbox] { width: auto; }
- 
+
   /* ── buttons ── */
   .btn { padding: 8px 18px; border: 1px solid var(--border); border-radius: 8px;
          background: none; cursor: pointer; font-size: 14px; color: var(--text);
@@ -169,7 +169,7 @@
   .btn-danger  { background: var(--danger-bg); color: var(--danger); border-color: #fca5a5; }
   .btn-sm { padding: 5px 12px; font-size: 13px; }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
- 
+
   /* ── toolbar / chips ── */
   .toolbar { display: flex; gap: 10px; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
   .search-wrap { position: relative; flex: 1; min-width: 180px; }
@@ -181,7 +181,7 @@
           font-size: 12px; cursor: pointer; color: var(--muted); background: none;
           transition: background .1s, color .1s; }
   .chip.active { background: var(--text); color: #fff; border-color: var(--text); }
- 
+
   /* ── match cards ── */
   .match-card { display: flex; align-items: center; gap: 14px; padding: 12px 1.25rem;
                 border-bottom: 1px solid var(--border); }
@@ -194,7 +194,7 @@
   .score-high { background: var(--success-bg); color: var(--success); }
   .score-mid  { background: var(--warn-bg);    color: var(--warn); }
   .score-low  { background: #f3f4f6;           color: #6b7280; }
- 
+
   /* ── history rows ── */
   .history-row { display: flex; align-items: center; gap: 12px; padding: 9px 0;
                  border-bottom: 1px solid var(--border); font-size: 13px; }
@@ -202,7 +202,7 @@
   .result-w { color: var(--success); font-weight: 700; width: 18px; }
   .result-l { color: var(--danger);  font-weight: 700; width: 18px; }
   .result-d { color: var(--muted);   font-weight: 700; width: 18px; }
- 
+
   /* ── detail panels ── */
   .detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 1.25rem; }
   .detail-avatar { width: 56px; height: 56px; border-radius: 50%; background: #e8e8e4;
@@ -213,43 +213,65 @@
               color: var(--muted); cursor: pointer; margin-bottom: 1rem;
               border: none; background: none; padding: 0; }
   .back-btn:hover { color: var(--text); }
- 
+
+  /* ── rankings ── */
+  .ranking-row {
+    display: flex; align-items: center; gap: 14px; padding: 11px 0;
+    border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s;
+  }
+  .ranking-row:last-child { border-bottom: none; }
+  .ranking-row:hover { background: var(--bg); margin: 0 -1.25rem;
+                       padding: 11px 1.25rem; border-radius: 6px; border-bottom-color: transparent; }
+  .rank-num {
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    width: 28px; text-align: center; flex-shrink: 0;
+  }
+  .rank-num.gold   { color: #b45309; }
+  .rank-num.silver { color: #6b7280; }
+  .rank-num.bronze { color: #92400e; }
+  .elo-pill {
+    font-size: 12px; font-weight: 600; padding: 3px 10px;
+    border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+  }
+  .elo-positive { background: var(--success-bg); color: var(--success); }
+  .elo-negative { background: var(--danger-bg);  color: var(--danger); }
+  .elo-neutral  { background: #f3f4f6;            color: #6b7280; }
+
   /* ── divider ── */
   .divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
- 
+
   /* ── toast ── */
   .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--text);
            color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 14px;
            opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 999; }
   .toast.show { opacity: 1; }
- 
+
   .empty { text-align: center; color: var(--muted); padding: 3rem 0; font-size: 14px; }
- 
-  /* ── sidebar nav visibility by role ── */
-  /* Hide all role-gated nav items by default */
+
+  /* ── sidebar nav role changes visability ── */
   .sidebar .fighter-only,
   .sidebar .coach-only,
   .sidebar .promoter-only,
-  .sidebar .mgmt-only { display: none; }
- 
-  /* Fighter */
-  body.role-fighter .sidebar .fighter-only { display: flex; }
- 
-  /* Coach */
-  body.role-coach .sidebar .coach-only  { display: flex; }
-  body.role-coach .sidebar .mgmt-only   { display: flex; }
- 
-  /* Promoter */
+  .sidebar .mgmt-only,
+  .sidebar .admin-only { display: none; }
+
+  body.role-fighter  .sidebar .fighter-only  { display: flex; }
+  body.role-coach    .sidebar .coach-only    { display: flex; }
+  body.role-coach    .sidebar .mgmt-only     { display: flex; }
   body.role-promoter .sidebar .promoter-only { display: flex; }
   body.role-promoter .sidebar .mgmt-only     { display: flex; }
- 
-  /* nav-section labels (div, not button) use block not flex */
+  body.role-admin    .sidebar .admin-only    { display: flex; }
+  body.role-admin    .sidebar .mgmt-only     { display: flex; }
+  body.role-admin    .sidebar .coach-only    { display: flex; }
+
   .sidebar .nav-section.fighter-only,
   .sidebar .nav-section.mgmt-only { display: none; }
   body.role-fighter  .sidebar .nav-section.fighter-only { display: block; }
   body.role-coach    .sidebar .nav-section.mgmt-only    { display: block; }
   body.role-promoter .sidebar .nav-section.mgmt-only    { display: block; }
-    @media (max-width: 640px) {
+  body.role-admin    .sidebar .nav-section.mgmt-only    { display: block; }
+
+  @media (max-width: 640px) {
     .sidebar { width: 56px; padding: .75rem .5rem; }
     .sidebar-logo, .nav-item span, .role-section, .nav-section { display: none; }
     .nav-item { justify-content: center; }
@@ -257,46 +279,116 @@
     .form-row, .form-row-3 { grid-template-columns: 1fr; }
     .detail-grid { grid-template-columns: 1fr 1fr; }
   }
+
+  /* ── auth screens ── */
+  .auth-screen {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 1rem;
+  }
+  .auth-screen.hidden { display: none; }  /* hidden class used by JS */
+  .auth-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 2rem; width: 100%;
+    max-width: 420px; box-shadow: var(--shadow);
+  }
+  .auth-logo { font-size: 22px; font-weight: 600; margin-bottom: .25rem; }
+  .auth-logo span { color: var(--muted); font-weight: 400; }
+  .auth-sub  { font-size: 13px; color: var(--muted); margin-bottom: 1.5rem; }
+  .auth-tabs { display: flex; gap: 0; margin-bottom: 1.5rem;
+               border-bottom: 1px solid var(--border); }
+  .auth-tab  {
+    padding: 8px 18px; border: none; background: none; cursor: pointer;
+    font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent;
+    margin-bottom: -1px; transition: color .12s, border-color .12s;
+  }
+  .auth-tab.active { color: var(--text); border-bottom-color: var(--text); }
+  .auth-error {
+    font-size: 13px; color: var(--danger); background: var(--danger-bg);
+    padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; display: none;
+  }
+  .auth-link {
+    font-size: 13px; color: var(--muted); margin-top: .75rem;
+    text-align: center; cursor: pointer;
+  }
+  .auth-link span { color: var(--text); text-decoration: underline; }
+  .role-select { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .role-card {
+    border: 1px solid var(--border); border-radius: 8px; padding: .75rem .5rem;
+    text-align: center; cursor: pointer; transition: border-color .12s, background .12s;
+  }
+  .role-card:hover { background: var(--bg); }
+  .role-card.selected { border-color: var(--text); background: var(--bg); }
+  .role-card-icon { font-size: 20px; margin-bottom: 4px; }
+  .role-card-label { font-size: 12px; font-weight: 500; }
+  .role-card-desc { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── user menu in sidebar ── */
+  .user-menu { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); }
+  .user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .user-avatar {
+    width: 32px; height: 32px; border-radius: 50%; background: var(--bg);
+    border: 1px solid var(--border); display: flex; align-items: center;
+    justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .user-email { font-size: 12px; color: var(--muted); overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+  .user-role-badge {
+    font-size: 10px; padding: 1px 7px; border-radius: 20px; font-weight: 500;
+    background: var(--bg); border: 1px solid var(--border); display: inline-block;
+    text-transform: capitalize; margin-top: 2px;
+  }
+
+  /* ── admin panel ── */
+  .user-table-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .user-table-row:last-child { border-bottom: none; }
+
 </style>
 </head>
 <body>
- 
-<div class="shell"> 
-  
- 
-  <!-- ── creating sidebar ── -->
+
+<div class="shell" id="app-shell" style="display:none">
+
+  <!-- ── sidebar ── -->
   <aside class="sidebar">
     <div class="sidebar-logo">Fight<span>DB</span></div>
- 
+
     <div class="nav-section">General</div>
     <button class="nav-item active" data-page="dashboard"><i class="icon">◈</i><span>Dashboard</span></button>
     <button class="nav-item" data-page="fighters"><i class="icon">◉</i><span>Fighters</span></button>
+    <button class="nav-item" data-page="rankings"><i class="icon">▲</i><span>Rankings</span></button>
     <button class="nav-item" data-page="events"><i class="icon">◷</i><span>Events</span></button>
     <button class="nav-item" data-page="history"><i class="icon">≡</i><span>Fight history</span></button>
- 
+
     <div class="nav-section fighter-only">My account</div>
     <button class="nav-item fighter-only" data-page="profile"><i class="icon">◎</i><span>My profile</span></button>
- 
+
     <div class="nav-section mgmt-only">Management</div>
     <button class="nav-item coach-only" data-page="matchmake"><i class="icon">⇄</i><span>Matchmake</span></button>
     <button class="nav-item coach-only" data-page="add-fighter"><i class="icon">+</i><span>Add fighter</span></button>
+    <button class="nav-item admin-only" data-page="admin"><i class="icon">⚙</i><span>Admin</span></button>
     <button class="nav-item mgmt-only" data-page="add-event"><i class="icon">◆</i><span>Add event</span></button>
     <button class="nav-item promoter-only" data-page="add-venue"><i class="icon">⌂</i><span>Add venue</span></button>
- 
-    <div class="role-section">
-      <span class="role-label">Signed in as</span>
-      <div class="role-toggle">
-        <button class="role-btn active" onclick="setRole('fighter')">Fighter</button>
-        <button class="role-btn" onclick="setRole('coach')">Coach</button>
-        <button class="role-btn" onclick="setRole('promoter')">Promoter</button>
+
+    <div class="user-menu" id="user-menu">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">?</div>
+        <div style="min-width:0">
+          <div class="user-email" id="sidebar-email">Not signed in</div>
+          <div class="user-role-badge" id="sidebar-role">—</div>
+        </div>
       </div>
+      <button class="btn btn-sm" style="width:100%" onclick="logout()">Sign out</button>
     </div>
   </aside>
- 
+
   <!-- ── main ── -->
   <main class="main">
- 
-    <!-- home page/dashboard  -->
+
+    <!-- dashboard -->
     <div id="page-dashboard" class="page active">
       <h1>Dashboard</h1>
       <div class="stat-grid">
@@ -316,7 +408,24 @@
         </div>
       </div>
     </div>
- 
+
+    <!-- rankings -->
+    <div id="page-rankings" class="page">
+      <h1>ELO rankings</h1>
+      <div class="chips" id="rankings-chips" style="margin-bottom:1rem">
+        <button class="chip active" data-sport="kickboxing">Kickboxing</button>
+        <button class="chip" data-sport="mma">MMA</button>
+        <button class="chip" data-sport="boxing">Boxing</button>
+      </div>
+      <div class="card" style="padding:0 1.25rem">
+        <div id="rankings-list"><div class="empty" style="padding:2rem">Loading…</div></div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:.75rem">
+        ELO ratings are calculated from full fight history. KO/TKO wins carry a 1.5× bonus,
+        submissions 1.3×. All fighters start at 0.
+      </p>
+    </div>
+
     <!-- fighters -->
     <div id="page-fighters" class="page">
       <h1>Fighters</h1>
@@ -338,7 +447,7 @@
         <div id="fighters-list"><div class="empty" style="padding:2rem">Loading…</div></div>
       </div>
     </div>
- 
+
     <!-- events -->
     <div id="page-events" class="page">
       <h1>Events</h1>
@@ -349,7 +458,7 @@
       </div>
       <div id="events-list"><div class="empty">Loading…</div></div>
     </div>
- 
+
     <!-- fight history -->
     <div id="page-history" class="page">
       <h1>Fight history</h1>
@@ -363,13 +472,13 @@
         <div id="history-list"><div class="empty" style="padding:2rem">Loading…</div></div>
       </div>
     </div>
- 
+
     <!-- my profile -->
     <div id="page-profile" class="page">
       <h1>My profile</h1>
       <div id="profile-content"><div class="empty">Loading…</div></div>
     </div>
- 
+
     <!-- matchmake -->
     <div id="page-matchmake" class="page">
       <h1>Matchmake</h1>
@@ -393,7 +502,7 @@
         <div class="empty" style="padding:2rem">Select a fighter to see suggested opponents.</div>
       </div>
     </div>
- 
+
     <!-- add fighter -->
     <div id="page-add-fighter" class="page">
       <h1>Add fighter</h1>
@@ -415,8 +524,8 @@
         <button class="btn btn-primary" onclick="submitAddFighter()">Add fighter</button>
       </div>
     </div>
- 
-    <!-- add event page  (only coach and promoter) -->
+
+    <!-- add event (coach + promoter) -->
     <div id="page-add-event" class="page">
       <h1>Add event</h1>
       <div class="card" style="max-width:560px">
@@ -441,8 +550,8 @@
         <button class="btn btn-primary" onclick="submitAddEvent()">Create event</button>
       </div>
     </div>
- 
-    <!-- add venue page  (promoter only) -->
+
+    <!-- add venue (promoter only) -->
     <div id="page-add-venue" class="page">
       <h1>Add venue</h1>
       <div class="card" style="max-width:480px">
@@ -459,20 +568,32 @@
         <button class="btn btn-primary" onclick="submitAddVenue()">Add venue</button>
       </div>
     </div>
- 
-    <!-- fighter details -->
+
+    <!-- admin panel -->
+    <div id="page-admin" class="page">
+      <h1>Admin panel</h1>
+      <div class="card" style="padding:0 1.25rem">
+        <div style="padding:.75rem 0;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:space-between">
+          <span>All users</span>
+          <span id="admin-user-count" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div id="admin-users-list"><div class="empty" style="padding:2rem">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- fighter detail -->
     <div id="page-fighter-detail" class="page">
       <button class="back-btn" onclick="goBack()">← Back</button>
       <div id="fighter-detail-content"></div>
     </div>
- 
-    <!-- event details -->
+
+    <!-- event detail -->
     <div id="page-event-detail" class="page">
       <button class="back-btn" onclick="goBack()">← Back to events</button>
       <div id="event-detail-content"></div>
     </div>
- 
-    <!-- fight logging -->
+
+    <!-- log fight -->
     <div id="page-add-fight" class="page">
       <button class="back-btn" onclick="goBack()">← Back to fighter</button>
       <h1>Log fight</h1>
@@ -497,10 +618,75 @@
         <button class="btn btn-primary" onclick="submitAddFight()">Log fight</button>
       </div>
     </div>
- 
+
   </main>
+
+  <!-- auth screen placeholder -->
+
+</main>
+
 </div>
- 
+
+<!-- ── auth screen  ── -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">Fight<span>DB</span></div>
+    <div class="auth-sub">Amateur combat sports management</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="showAuthTab('login')">Sign in</button>
+      <button class="auth-tab" onclick="showAuthTab('register')">Create account</button>
+    </div>
+
+    <!-- login form -->
+    <div id="auth-login">
+      <div id="login-error" class="auth-error"></div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input id="login-email" type="email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input id="login-password" type="password" placeholder="••••••••">
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitLogin()">Sign in</button>
+    </div>
+
+    <!-- register form -->
+    <div id="auth-register" style="display:none">
+      <div id="register-error" class="auth-error"></div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input id="reg-email" type="email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password <span style="color:var(--muted);font-weight:400">(min. 8 characters)</span></label>
+        <input id="reg-password" type="password" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">I am a…</label>
+        <div class="role-select" id="role-select">
+          <div class="role-card selected" data-role="fighter" onclick="selectRole(this)">
+            <div class="role-card-icon">◉</div>
+            <div class="role-card-label">Fighter</div>
+            <div class="role-card-desc">View your stats</div>
+          </div>
+          <div class="role-card" data-role="coach" onclick="selectRole(this)">
+            <div class="role-card-icon">◈</div>
+            <div class="role-card-label">Coach</div>
+            <div class="role-card-desc">Manage fighters</div>
+          </div>
+          <div class="role-card" data-role="promoter" onclick="selectRole(this)">
+            <div class="role-card-icon">◆</div>
+            <div class="role-card-label">Promoter</div>
+            <div class="role-card-desc">Run events</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitRegister()">Create account</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -509,17 +695,16 @@ let allFighters  = [];
 let allFights    = [];
 let allEvents    = [];
 let allVenues    = [];
-let currentRole  = 'fighter';
+let currentUser  = null;   // set after login
 let sportFilter  = 'all';
 let histFilter   = 'all';
 let eventFilter  = 'all';
+let rankingSport = 'kickboxing';
 let pageHistory  = [];
 let activeFighter = null;
 let activeEvent   = null;
- 
-// ── local "databases" for events & venues (replace with API calls later) ──────
-// Stored in memory; in production these become Flask endpoints.
- 
+
+// ── local storage for events/venues 
 function saveEvents() { try { sessionStorage.setItem('fdb_events', JSON.stringify(allEvents)); } catch(e){} }
 function saveVenues() { try { sessionStorage.setItem('fdb_venues', JSON.stringify(allVenues)); } catch(e){} }
 function loadLocalData() {
@@ -543,40 +728,110 @@ function loadLocalData() {
     const future2 = new Date(today); future2.setDate(today.getDate()+42);
     const past1   = new Date(today); past1.setDate(today.getDate()-21);
     allEvents = [
-      {id:1, name:"Summer Showdown 2025", date:fmt(future1), time:"19:00",
-       venueId:1, sports:["kickboxing","boxing"], desc:"Amateur regional championship.", organiserRole:"promoter"},
-      {id:2, name:"Riverside Open",       date:fmt(future2), time:"18:30",
-       venueId:2, sports:["mma"],              desc:"Open MMA card, all levels welcome.", organiserRole:"coach"},
-      {id:3, name:"Spring Throwdown",     date:fmt(past1),   time:"20:00",
-       venueId:3, sports:["kickboxing","mma","boxing"], desc:"Multi-discipline event.", organiserRole:"promoter"},
+      {id:1, name:"Summer Showdown 2025", date:fmt(future1), time:"19:00", venueId:1, sports:["kickboxing","boxing"], desc:"Amateur regional championship.", organiserRole:"promoter"},
+      {id:2, name:"Riverside Open",       date:fmt(future2), time:"18:30", venueId:2, sports:["mma"],              desc:"Open MMA card.",              organiserRole:"coach"},
+      {id:3, name:"Spring Throwdown",     date:fmt(past1),   time:"20:00", venueId:3, sports:["kickboxing","mma","boxing"], desc:"Multi-discipline event.", organiserRole:"promoter"},
     ];
   }
 }
- 
-// ── utilities
 
+// ── utilities 
 const $ = id => document.getElementById(id);
 const initials = name => name.trim().split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
- 
+
 function sportBadge(sport) {
   const cls = {kickboxing:'badge-kb', mma:'badge-mma', boxing:'badge-box'}[sport]||'';
   return `<span class="badge ${cls}">${sport}</span>`;
 }
- 
+
 function toast(msg, dur=2400) {
   const t = $('toast'); t.textContent = msg;
   t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), dur);
 }
- 
+
 async function apiFetch(path, opts={}) {
-  const res = await fetch(API+path, {headers:{'Content-Type':'application/json'}, ...opts});
+  const res = await fetch(API+path, {headers:{'Content-Type':'application/json'}, credentials:'include', ...opts});
   const data = await res.json();
   if (!res.ok) throw new Error(data.error||'Request failed');
   return data;
 }
- 
-// ── navigation 
 
+// ── auth screens 
+
+function showAuthTab(tab) {
+  $('auth-login').style.display    = tab==='login'    ? 'block' : 'none';
+  $('auth-register').style.display = tab==='register' ? 'block' : 'none';
+  document.querySelectorAll('.auth-tab').forEach(b =>
+    b.classList.toggle('active', b.textContent.toLowerCase().includes(tab==='login'?'sign':'create')));
+}
+
+function selectRole(el) {
+  document.querySelectorAll('.role-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function showAuthError(elId, msg) {
+  const el = $(elId); el.textContent = msg; el.style.display = 'block';
+}
+function clearAuthErrors() {
+  ['login-error','register-error'].forEach(id => { $(id).style.display='none'; $(id).textContent=''; });
+}
+
+async function submitLogin() {
+  clearAuthErrors();
+  const email    = $('login-email').value.trim();
+  const password = $('login-password').value;
+  if (!email||!password) { showAuthError('login-error','Please fill in all fields.'); return; }
+  try {
+    const data = await apiFetch('/api/auth/login', {method:'POST', body:JSON.stringify({email,password})});
+    onLoginSuccess(data.user);
+  } catch(e) { showAuthError('login-error', e.message); }
+}
+
+async function submitRegister() {
+  clearAuthErrors();
+  const email    = $('reg-email').value.trim();
+  const password = $('reg-password').value;
+  const roleEl   = document.querySelector('.role-card.selected');
+  const role     = roleEl ? roleEl.dataset.role : 'fighter';
+  if (!email||!password) { showAuthError('register-error','Please fill in all fields.'); return; }
+  try {
+    const data = await apiFetch('/api/auth/register', {method:'POST', body:JSON.stringify({email,password,role})});
+    onLoginSuccess(data.user);
+  } catch(e) { showAuthError('register-error', e.message); }
+}
+
+function onLoginSuccess(user) {
+  currentUser = user;
+  $('auth-screen').style.display = 'none';
+  $('app-shell').style.display = 'flex';
+  applyRole(user.role);
+  updateSidebarUser(user);
+  bootApp();
+}
+
+async function logout() {
+  await apiFetch('/api/auth/logout', {method:'POST'}).catch(()=>{});
+  currentUser = null;
+  allFighters = []; allFights = [];
+  $('app-shell').style.display = 'none';
+  $('auth-screen').style.display = 'flex';
+  document.body.className = '';
+  $('login-email').value = ''; $('login-password').value = '';
+}
+
+function applyRole(role) {
+  document.body.className = 'role-' + role;
+}
+
+function updateSidebarUser(user) {
+  const initl = user.email.slice(0,2).toUpperCase();
+  $('sidebar-avatar').textContent = initl;
+  $('sidebar-email').textContent  = user.email;
+  $('sidebar-role').textContent   = user.role;
+}
+
+// ── navigation 
 function showPage(pageId, pushHistory=true) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const page = $('page-'+pageId);
@@ -586,32 +841,25 @@ function showPage(pageId, pushHistory=true) {
   document.querySelectorAll('.nav-item[data-page]').forEach(b=>
     b.classList.toggle('active', b.dataset.page===pageId));
 }
- 
+
 function goBack() {
   pageHistory.pop();
   const prev = pageHistory[pageHistory.length-1]||'dashboard';
   showPage(prev, false);
 }
- 
+
 document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
   btn.addEventListener('click', ()=>{ showPage(btn.dataset.page); refresh(btn.dataset.page); });
 });
- 
-// ── role
 
+// ── role server driven instead of toggled 
 function setRole(role) {
-  currentRole = role;
-  document.body.className = 'role-' + role;
-  document.querySelectorAll('.role-btn').forEach(b =>
-    b.classList.toggle('active', b.textContent.toLowerCase() === role));
-  // Navigate to the right default page for each role
-  const defaultPage = role === 'fighter' ? 'dashboard' : 'dashboard';
-  showPage(defaultPage);
-  refresh(defaultPage);
+  applyRole(role);
+  showPage('dashboard');
+  refresh('dashboard');
 }
- 
-// ── data
 
+// ── data 
 async function loadAll() {
   const sports = ['kickboxing','mma','boxing'];
   const [fighters, fights] = await Promise.all([
@@ -621,7 +869,7 @@ async function loadAll() {
   allFighters = fighters.flatMap(r=>r.fighters.map(f=>({...f, sport:r.sport})));
   allFights   = fights.flatMap(r=>r.fights.map(f=>({...f, sport:r.sport})));
 }
- 
+
 async function loadStats() {
   const data = await apiFetch('/api/stats');
   $('stat-total').textContent = data.total;
@@ -629,26 +877,26 @@ async function loadStats() {
   $('stat-mma').textContent   = data.mma;
   $('stat-box').textContent   = data.boxing;
 }
- 
+
 function refresh(page) {
   if (page==='dashboard')  { loadStats(); renderDashboard(); }
   if (page==='fighters')   renderFighters();
   if (page==='events')     renderEvents();
-  if (page==='matchmake')  loadMMFighters();
+  if (page==='rankings')   renderRankings();
   if (page==='history')    renderHistory();
   if (page==='profile')    renderProfile();
+  if (page==='admin')      renderAdmin();
   if (page==='add-event')  populateVenueSelect();
 }
- 
-// ── dashboard 
 
+// ── dashboard 
 function renderDashboard() {
   const list = $('dashboard-list');
   list.innerHTML = allFighters.length
     ? allFighters.slice(0,5).map(f=>miniRow(f)).join('')
     : '<div class="empty" style="padding:1rem 0">No fighters yet.</div>';
   attachFighterRowListeners($('dashboard-list'));
- 
+
   const upcoming = allEvents
     .filter(e=>new Date(e.date) >= new Date())
     .sort((a,b)=>new Date(a.date)-new Date(b.date))
@@ -659,7 +907,7 @@ function renderDashboard() {
   $('dashboard-events').querySelectorAll('[data-eid]').forEach(el=>
     el.addEventListener('click', ()=>openEventDetail(parseInt(el.dataset.eid))));
 }
- 
+
 function miniRow(f) {
   return `<div class="fighter-row" data-id="${f.id}" data-sport="${f.sport}" style="padding:8px 0">
     <div class="avatar" style="width:32px;height:32px;font-size:11px">${initials(f.name)}</div>
@@ -669,7 +917,7 @@ function miniRow(f) {
     <span class="record-badge" style="font-size:12px">${f.wins}-${f.losses}-${f.draws}</span>
   </div>`;
 }
- 
+
 function miniEventRow(e) {
   const d = new Date(e.date);
   const day = d.getDate();
@@ -685,16 +933,15 @@ function miniEventRow(e) {
     </div>
   </div>`;
 }
- 
-// ── fighter list
 
+// ── fighter list page 
 document.querySelectorAll('#sport-chips .chip').forEach(chip=>{
   chip.addEventListener('click',()=>{
     document.querySelectorAll('#sport-chips .chip').forEach(c=>c.classList.remove('active'));
     chip.classList.add('active'); sportFilter=chip.dataset.sport; renderFighters();
   });
 });
- 
+
 function fighterRowHTML(f) {
   return `<div class="fighter-row" data-id="${f.id}" data-sport="${f.sport}">
     <div class="avatar">${initials(f.name)}</div>
@@ -705,12 +952,12 @@ function fighterRowHTML(f) {
     <span class="record-badge">${f.wins}-${f.losses}-${f.draws}</span>
   </div>`;
 }
- 
+
 function attachFighterRowListeners(container) {
   container.querySelectorAll('.fighter-row').forEach(row=>
     row.addEventListener('click',()=>openFighterDetail(row.dataset.id, row.dataset.sport)));
 }
- 
+
 function renderFighters() {
   const q = ($('fighter-search').value||'').toLowerCase();
   let list = allFighters;
@@ -721,16 +968,15 @@ function renderFighters() {
     : '<div class="empty" style="padding:2rem">No fighters found.</div>';
   attachFighterRowListeners(el);
 }
- 
-// ── events page 
 
+// ── events
 document.querySelectorAll('#event-chips .chip').forEach(chip=>{
   chip.addEventListener('click',()=>{
     document.querySelectorAll('#event-chips .chip').forEach(c=>c.classList.remove('active'));
     chip.classList.add('active'); eventFilter=chip.dataset.when; renderEvents();
   });
 });
- 
+
 function eventStatus(dateStr) {
   const d = new Date(dateStr); const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -738,9 +984,9 @@ function eventStatus(dateStr) {
   if (evDay.getTime()===today.getTime()) return 'today';
   return d >= now ? 'upcoming' : 'past';
 }
- 
+
 function venueById(id) { return allVenues.find(v=>v.id===id); }
- 
+
 function renderEvents() {
   let list = [...allEvents].sort((a,b)=>new Date(b.date)-new Date(a.date));
   if (eventFilter==='upcoming') list=list.filter(e=>eventStatus(e.date)!=='past');
@@ -776,7 +1022,7 @@ function renderEvents() {
   el.querySelectorAll('.event-card').forEach(card=>
     card.addEventListener('click',()=>openEventDetail(parseInt(card.dataset.eid))));
 }
- 
+
 function openEventDetail(id) {
   activeEvent = id;
   const e = allEvents.find(ev=>ev.id===id);
@@ -786,8 +1032,8 @@ function openEventDetail(id) {
   const stLabel= st==='today'?'Today':st==='upcoming'?'Upcoming':'Past';
   const d      = new Date(e.date);
   const dateStr= d.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  const isMgmt = currentRole==='coach'||currentRole==='promoter';
- 
+  const isMgmt = currentUser && ['coach','promoter','admin'].includes(currentUser.role);
+
   $('event-detail-content').innerHTML = `
     <div class="event-detail-banner">
       <h2>${e.name}</h2>
@@ -814,10 +1060,10 @@ function openEventDetail(id) {
     ${isMgmt ? `<div class="btn-row">
       <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})">Delete event</button>
     </div>` : ''}`;
- 
+
   showPage('event-detail');
 }
- 
+
 function deleteEvent(id) {
   if (!confirm('Delete this event?')) return;
   allEvents = allEvents.filter(e=>e.id!==id);
@@ -826,15 +1072,14 @@ function deleteEvent(id) {
   goBack();
   renderEvents();
 }
- 
-// ── add event for promoters and coaches 
 
+// ── add event 
 function populateVenueSelect() {
   $('ae-venue').innerHTML = allVenues.length
     ? allVenues.map(v=>`<option value="${v.id}">${v.name}, ${v.city}</option>`).join('')
     : '<option value="">No venues yet — add one first</option>';
 }
- 
+
 function submitAddEvent() {
   const name = $('ae-name').value.trim();
   const date = $('ae-date').value;
@@ -851,7 +1096,7 @@ function submitAddEvent() {
     id: Date.now(), name, date, time: time||'19:00',
     venueId: vid, sports: sportIds,
     desc: $('ae-desc').value.trim(),
-    organiserRole: currentRole,
+    organiserRole: currentUser ? currentUser.role : 'unknown',
   };
   allEvents.push(newEvent);
   saveEvents();
@@ -860,9 +1105,8 @@ function submitAddEvent() {
   $('ae-kb').checked=$('ae-mma').checked=$('ae-box').checked=false;
   showPage('events'); renderEvents();
 }
- 
-// ── add venue only accessable for promoters and coaches 
 
+// ── add venue
 function submitAddVenue() {
   const name = $('av-name').value.trim();
   const addr = $('av-addr').value.trim();
@@ -875,9 +1119,8 @@ function submitAddVenue() {
   toast(`Venue "${name}" added`);
   $('av-name').value=''; $('av-addr').value=''; $('av-city').value=''; $('av-cap').value='';
 }
- 
-// ── fighter details
 
+// ── fighter detail
 async function openFighterDetail(id, sport) {
   activeFighter = {id:parseInt(id), sport};
   showPage('fighter-detail');
@@ -887,8 +1130,8 @@ async function openFighterDetail(id, sport) {
   ]);
   const total   = fighter.wins+fighter.losses+fighter.draws||1;
   const winRate = Math.round(fighter.wins/total*100);
-  const isCoach = currentRole==='coach';
- 
+  const isCoach = currentUser && ['coach','admin'].includes(currentUser.role);
+
   $('fighter-detail-content').innerHTML = `
     <div class="detail-header">
       <div class="detail-avatar">${initials(fighter.name)}</div>
@@ -920,9 +1163,9 @@ async function openFighterDetail(id, sport) {
         : '<div class="empty" style="padding:1.5rem">No fights logged yet.</div>'}
     </div>`;
 }
- 
+
 function goLogFight() { $('fight-date').valueAsDate=new Date(); showPage('add-fight'); }
- 
+
 async function submitAddFight() {
   const opponent = $('fight-opponent').value.trim();
   if (!opponent) { toast('Enter opponent name'); return; }
@@ -939,7 +1182,7 @@ async function submitAddFight() {
     openFighterDetail(activeFighter.id, activeFighter.sport);
   } catch(e) { toast('Error: '+e.message); }
 }
- 
+
 async function confirmDelete(id, sport) {
   if (!confirm('Delete this fighter? This cannot be undone.')) return;
   try {
@@ -947,16 +1190,15 @@ async function confirmDelete(id, sport) {
     toast('Fighter deleted'); await loadAll(); goBack();
   } catch(e) { toast('Error: '+e.message); }
 }
- 
-// ── matchmaking only accessable for promoters and coaches 
 
+// ── matchmaking
 async function loadMMFighters() {
   const sport=$('mm-sport').value;
   const data=await apiFetch(`/api/${sport}/fighters`);
   $('mm-fighter').innerHTML=data.fighters.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
   runMatchmake();
 }
- 
+
 async function runMatchmake() {
   const sport=$('mm-sport').value, fid=$('mm-fighter').value;
   if(!fid) return;
@@ -975,16 +1217,15 @@ async function runMatchmake() {
     </div>`;
   }).join('');
 }
- 
-// ── bout history for fighters 
 
+// ── history 
 document.querySelectorAll('#hist-chips .chip').forEach(chip=>{
   chip.addEventListener('click',()=>{
     document.querySelectorAll('#hist-chips .chip').forEach(c=>c.classList.remove('active'));
     chip.classList.add('active'); histFilter=chip.dataset.sport; renderHistory();
   });
 });
- 
+
 function renderHistory() {
   let list=allFights;
   if(histFilter!=='all') list=list.filter(h=>h.sport===histFilter);
@@ -999,20 +1240,47 @@ function renderHistory() {
     </div>`).join('')
     :'<div class="empty" style="padding:2rem">No fights logged yet.</div>';
 }
- 
-// ── profile functions 
+
+// ── profile 
 function renderProfile() {
-  const f=allFighters.find(f=>f.sport==='kickboxing')||allFighters[0];
-  if(!f){$('profile-content').innerHTML='<div class="empty">No fighter found.</div>';return;}
-  const total=f.wins+f.losses+f.draws||1;
-  const winRate=Math.round(f.wins/total*100);
-  $('profile-content').innerHTML=`
+  const el = $('profile-content');
+  // Use the linked fighter record from the logged-in user if available
+  const linked = currentUser && currentUser.fighter_record;
+  const sport  = currentUser && currentUser.fighter_sport;
+  const f = linked || allFighters.find(f=>f.sport==='kickboxing') || allFighters[0];
+  if (!f) { el.innerHTML='<div class="empty">No fighter record linked to your account.<br>Ask your coach to add you to the system.</div>'; return; }
+  const displaySport = sport || f.sport || 'kickboxing';
+  const total   = f.wins+f.losses+f.draws||1;
+  const winRate = Math.round(f.wins/total*100);
+
+  // Link fighter form shown if no record linked yet
+  const linkForm = (!linked && currentUser && currentUser.role==='fighter') ? `
+    <div class="card" style="margin-top:1rem">
+      <h2 style="font-size:14px;margin-bottom:.75rem">Link your fighter record</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Sport</label>
+          <select id="link-sport">
+            <option value="kickboxing">Kickboxing</option>
+            <option value="mma">MMA</option>
+            <option value="boxing">Boxing</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fighter ID</label>
+          <input id="link-fid" type="number" placeholder="e.g. 3">
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="linkFighterRecord()">Link record</button>
+    </div>` : '';
+
+  el.innerHTML = `
     <div class="card">
       <div class="detail-header">
         <div class="detail-avatar">${initials(f.name)}</div>
         <div>
           <div style="font-size:20px;font-weight:600">${f.name}</div>
-          <div style="font-size:13px;color:var(--muted);margin-top:3px">Age ${f.age} · ${f.weight_kg} kg · ${sportBadge(f.sport)}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:3px">Age ${f.age} · ${f.weight_kg} kg · ${sportBadge(displaySport)}</div>
         </div>
       </div>
       <div class="detail-grid">
@@ -1021,11 +1289,28 @@ function renderProfile() {
         <div class="stat"><div class="stat-val">${f.draws}</div><div class="stat-lbl">Draws</div></div>
         <div class="stat"><div class="stat-val">${winRate}%</div><div class="stat-lbl">Win rate</div></div>
       </div>
-    </div>`;
+    </div>${linkForm}`;
 }
- 
-// ── add fighter funciton 
 
+async function linkFighterRecord() {
+  const sport = $('link-sport').value;
+  const fid   = parseInt($('link-fid').value);
+  if (!fid) { toast('Enter a fighter ID'); return; }
+  try {
+    const data = await apiFetch('/api/auth/link-fighter', {
+      method:'POST', body:JSON.stringify({fighter_id:fid, fighter_sport:sport})
+    });
+    currentUser = data.user;
+    // fetch the full fighter record too
+    const rec = await apiFetch(`/api/${sport}/fighters/${fid}`);
+    currentUser.fighter_record = rec;
+    currentUser.fighter_sport  = sport;
+    toast('Fighter record linked!');
+    renderProfile();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+// ── add fighter 
 async function submitAddFighter() {
   const name=($('af-name').value||'').trim();
   const age=parseInt($('af-age').value);
@@ -1039,21 +1324,116 @@ async function submitAddFighter() {
     await loadAll(); renderDashboard();
   } catch(e){toast('Error: '+e.message);}
 }
- 
-// ── boot 
-(async()=>{
-  document.body.className = 'role-fighter';  // default role
+
+// ── rankings 
+
+document.querySelectorAll('#rankings-chips .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#rankings-chips .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    rankingSport = chip.dataset.sport;
+    renderRankings();
+  });
+});
+
+async function renderRankings() {
+  const el = $('rankings-list');
+  el.innerHTML = '<div class="empty" style="padding:2rem">Loading…</div>';
+  try {
+    const data = await apiFetch(`/api/${rankingSport}/rankings`);
+    if (!data.rankings.length) {
+      el.innerHTML = '<div class="empty" style="padding:2rem">No fighters in this sport yet.</div>';
+      return;
+    }
+    el.innerHTML = data.rankings.map(f => {
+      const rankCls = f.rank === 1 ? 'gold' : f.rank === 2 ? 'silver' : f.rank === 3 ? 'bronze' : '';
+      const eloCls  = f.elo > 0 ? 'elo-positive' : f.elo < 0 ? 'elo-negative' : 'elo-neutral';
+      const eloStr  = (f.elo > 0 ? '+' : '') + f.elo.toFixed(1);
+      const total   = f.wins + f.losses + f.draws;
+      return `<div class="ranking-row" data-id="${f.id}" data-sport="${rankingSport}">
+        <div class="rank-num ${rankCls}">${f.rank}</div>
+        <div class="avatar">${initials(f.name)}</div>
+        <div class="fighter-info">
+          <div class="fighter-name">${f.name}</div>
+          <div class="fighter-meta">${f.wins}W · ${f.losses}L · ${f.draws}D · ${total} fights</div>
+        </div>
+        <span class="elo-pill ${eloCls}">${eloStr}</span>
+      </div>`;
+    }).join('');
+    attachFighterRowListeners(el);
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="padding:2rem">Could not load rankings.</div>`;
+  }
+}
+
+// ── admin 
+
+async function renderAdmin() {
+  const el = $('admin-users-list');
+  el.innerHTML = '<div class="empty" style="padding:2rem">Loading…</div>';
+  try {
+    const data = await apiFetch('/api/admin/users');
+    $('admin-user-count').textContent = data.users.length + ' users';
+    const roleBadgeColour = {fighter:'badge-kb', coach:'badge-mma', promoter:'badge-box', admin:''};
+    el.innerHTML = data.users.length ? data.users.map(u => `
+      <div class="user-table-row">
+        <div class="user-avatar" style="width:30px;height:30px;font-size:11px;flex-shrink:0">${u.email.slice(0,2).toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
+          <div style="font-size:11px;color:var(--muted)">${u.created_at.slice(0,10)}</div>
+        </div>
+        <select onchange="adminChangeRole(${u.id}, this.value)" style="width:110px;font-size:12px;padding:4px 6px">
+          ${['fighter','coach','promoter','admin'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${r}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm btn-danger" onclick="adminDeleteUser(${u.id})" style="padding:4px 10px">✕</button>
+      </div>`).join('')
+      : '<div class="empty" style="padding:2rem">No users yet.</div>';
+  } catch(e) {
+    el.innerHTML = `<div class="empty" style="padding:2rem">Could not load users.</div>`;
+  }
+}
+
+async function adminChangeRole(userId, newRole) {
+  try {
+    await apiFetch(`/api/admin/users/${userId}/role`, {method:'PUT', body:JSON.stringify({role:newRole})});
+    toast('Role updated');
+  } catch(e) { toast('Error: '+e.message); renderAdmin(); }
+}
+
+async function adminDeleteUser(userId) {
+  if (!confirm('Delete this user account?')) return;
+  try {
+    await apiFetch(`/api/admin/users/${userId}`, {method:'DELETE'});
+    toast('User deleted');
+    renderAdmin();
+  } catch(e) { toast('Error: '+e.message); }
+}
+
+// ── boot function
+async function bootApp() {
   loadLocalData();
   try {
     await loadAll();
     renderDashboard();
-    await loadMMFighters();
+    loadStats();
+    await loadMMFighters().catch(()=>{});
   } catch(e) {
-    console.warn('API unavailable:', e.message);
-    $('dashboard-list').innerHTML=`<div class="empty">Could not connect to API.<br>Make sure Flask is running on port 5000.</div>`;
+    console.warn('API error:', e.message);
+    $('dashboard-list').innerHTML=`<div class="empty">Could not load data.<br>Make sure Flask is running on port 5000.</div>`;
   }
   renderEvents();
   populateVenueSelect();
+  renderRankings();
+}
+
+// On page load — auth screen is already visible, check if session exists
+(async()=>{
+  try {
+    const data = await apiFetch('/api/auth/me');
+    onLoginSuccess(data.user);  // session found — go straight to app
+  } catch(e) {
+    // Not logged in — auth screen already visible, nothing to do
+  }
 })();
 </script>
 </body>
