@@ -242,6 +242,27 @@ class FighterDB:
         ]
 
         return rank_opponents(fighter, fighter_history, candidates)
+    
+
+    def gym_assign(self, fighter_id: int, gym_id: int | None) -> None:
+        '''assign or remove a fighter from a gym'''
+        
+        cur = self._conn.cursor()
+        cur.execute("UPDATE fighters SET gym_id=? WHERE id=?", (gym_id, fighter_id))
+        if cur.rowcount == 0:
+            raise ValueError(f"Fighter {fighter_id} not found.")
+        self._conn.commit()
+    
+    def get_fighters_by_gym (self, gym_id:int) -> list[dict]:
+        '''returns all fighters assigned to a specific gym'''
+        cur = self._conn.cursor()
+        cur.execute("""
+                    SELECT f.id, f.name, f.age, f.weight, r.wins, r.losses, r.draws, f.gym_id
+                    FROM fighters f JOIN records r ON r.fighter_id =f.id
+                    WHERE f.gym_id =?
+                    ORDER BY f.name""",(gym_id,))
+        return [self._fighter_row(r) for r in cur.fetchall()]
+    
 
     #  housekeeping 
 

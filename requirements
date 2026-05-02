@@ -1,2 +1,5 @@
+# FightHub — Python requirements 
+# Install with: pip install -r requirements.txt
+ 
 flask>=3.0
-flask-cors>=4.0
+werkzeug>=3.0      # password hashing — ships with Flask, listed for clarity

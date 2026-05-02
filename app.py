@@ -123,11 +123,10 @@ def login():
                     user["fighter_record"] = db.get_fighter(user["fighter_id"])
             except Exception:
                 user["fighter_record"] = None
-            return jsonify
+        return jsonify({"user": user})
     except ValueError as e:
         return err(str(e)),401
 
-    roles_requried
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
