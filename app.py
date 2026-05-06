@@ -9,6 +9,8 @@ all responses are json errors reutnr with appropriate status code
 
 
 
+import re
+
 from flask import Flask, jsonify, request, send_from_directory, session
 from fighter_database import FighterDB
 from auth import authDB
@@ -394,6 +396,132 @@ def stats():
     totals["total"] = sum(totals.values())
     return jsonify(totals)
 
+
+
+'''gym endpoints'''
+
+
+@app.route("/api/gyms", methods=["GET"])
+@login_required
+def list_gyms():
+    '''lists all gyms. coaches only see their gym, amdins can see all'''
+    user = current_user()
+    if user["role"] == "admin":
+        gyms = auth_db.get_all_gyms()
+    elif user["role"] == "coach":
+        gyms = auth_db.get_all_gyms_by_coach(user["id"])
+    else:
+        gyms = auth_db.get_all_gyms()
+    return jsonify({"gyms": gyms})
+
+@app.route("/api/gyms", methods=["POST"])
+@roles_requried("coach", "admin")
+def create_gym():
+    data,error = require_json("name")
+    if error:
+        return error
+    try:
+        gym = auth_db.create_gym(
+            name=data["name"],
+            coach_id=current_user()["id"],
+            location=data.get("location","")
+        )
+        return jsonify({"gym": gym}),201
+    except ValueError as e:
+        return err(str(e))
+    
+@app.route("/api/gyms/<int:gym_id>", methods=["PUT"])
+@login_required
+def get_gym(gym_id):
+    gym = auth_db.get_gym(gym_id)
+    if not gym:
+        return err("Gym not found", 404)
+    return jsonify({"gym": gym})
+
+@app.route("/api/gyms/<int:gym_id>",methods=["put"])
+@roles_requried("coach", "admin")
+def update_gym(gym_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        gym = auth_db.update_gym(
+            gym_id=gym_id,
+            coach_id=current_user()["id"],
+            name=data.get("name"),
+            location=data.get("location"),
+        )
+        return jsonify({"gym": gym})
+    except ValueError as e:
+        return err(str(e), 403)
+
+@app.route("/api/gyms/<int:gym_id>", methods=["DELETE"])
+@roles_requried("coach", "admin")
+def delete_gym(gym_id):
+    try:
+        auth_db.delete_gym(gym_id)
+        return jsonify({"message": "Gym deleted successfully"})
+    except ValueError as e:
+        return err(str(e), 403)
+    
+
+@app.route("/api/gyms/<int:gym_id>/fighters", methods=["GET"])
+@login_required
+def gym_fighters(gym_id):
+    '''returns all figh5ters in a gym accross all sports'''
+
+    gym = auth_db.get_gym(gym_id)
+    if not gym:
+        return err("gym not found", 404)
+    from matchmaker import compute_elo_for_pool
+    results =[]
+    for sport in VALID_SPORTS:
+        with get_db(sport) as db:
+            fighters = db.get_fighters_by_gym(gym_id)
+            if fighters:
+                all_fighters = db.get_all_fighters()
+                all_histories = {f["id"]:db.get_fight_history(f["id"]) for f in all_fighters}
+                elo_ratings = compute_elo_for_pool(all_fighters, all_histories)
+                for f in fighters:
+                    results.append({**f, "sport": sport,
+                                    "elo": elo_ratings(f["id"],00)})
+        return jsonify({"gyms": gym, "fighters": results})
+
+@app.route("/api/gyms/<int:gym_id>/fighters/<int:fighter_id>", methods=["POST"])
+@roles_requried("coach", "admin")
+def assign_fighter_to_gym(gym_id, fighter_id):
+    '''assings a fighter to a gym. a coach must own the gym'''
+    try:
+        auth_db._assert_gym_owner(gym_id, current_user()["id"])
+    except ValueError as e:
+        return err(str(e), 403)
+    sport = request.args.get("sport")
+    if sport not in VALID_SPORTS:
+        return err(f"please provide a valid ?sport= parameter")
+    try:
+        with get_db(sport) as db:
+            db.assign_gym(fighter_id, gym_id)
+        return jsonify({"assinged": fighter_id, "gym_id": gym_id})
+    except ValueError as e:
+        return err(str(e), 404)
+    
+
+@app.route("/api/gyms/<int:gym_id>/fighters/<int:fighter_id>", methods=["DELETE"])
+@roles_requried("coach", "admin")
+def remove_fighter_from_gym(gym_id, fighter_id):
+    """Remove a fighter from the gym (sets gym_id to null)."""
+    try:
+        auth_db._assert_gym_owner(gym_id, current_user()["id"])
+    except ValueError as e:
+        return err(str(e), 403)
+    sport = request.args.get("sport")
+    if sport not in VALID_SPORTS:
+        return err("Provide a valid ?sport= parameter.")
+    try:
+        with get_db(sport) as db:
+            db.assign_gym(fighter_id, None)
+        return jsonify({"removed": fighter_id, "gym_id": gym_id})
+    except ValueError as e:
+        return err(str(e), 404)
+    
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

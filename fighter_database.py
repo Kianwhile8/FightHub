@@ -215,7 +215,7 @@ class FighterDB:
         ]
 
     # matchmaking 
-    # Full algorithm lives in matchmaker.py.
+    # Full algorithm in matchmaker.py.
     # gathers requried data and delegates to matchmaker.py
 
     def get_matches(self, fighter_id: int) -> list[dict]:

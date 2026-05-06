@@ -1409,6 +1409,133 @@ async function adminDeleteUser(userId) {
   } catch(e) { toast('Error: '+e.message); }
 }
 
+
+// - gym features
+
+let activeGym = null;
+ 
+async function renderGyms() {
+  const el = $('gyms-list');
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const data = await apiFetch('/api/gyms');
+    if (!data.gyms.length) {
+      el.innerHTML = '<div class="empty">No gyms yet. Create your first gym above.</div>';
+      return;
+    }
+    el.innerHTML = data.gyms.map(g => `
+      <div class="gym-card" data-gid="${g.id}" onclick="openGymDetail(${g.id})">
+        <div class="gym-card-header">
+          <div class="gym-icon">⌖</div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:15px">${g.name}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">${g.location || 'No location set'}</div>
+          </div>
+          <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteGym(${g.id})" style="padding:4px 10px">Delete</button>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty">Could not load gyms.</div>`;
+  }
+}
+ 
+async function submitCreateGym() {
+  const name     = $('gc-name').value.trim();
+  const location = $('gc-location').value.trim();
+  if (!name) { toast('Enter a gym name'); return; }
+  try {
+    await apiFetch('/api/gyms', { method:'POST', body:JSON.stringify({name, location}) });
+    toast(`Gym "${name}" created`);
+    $('gc-name').value = ''; $('gc-location').value = '';
+    showPage('gyms'); renderGyms();
+  } catch(e) { toast('Error: ' + e.message); }
+}
+ 
+async function deleteGym(gymId) {
+  if (!confirm('Delete this gym? Fighters will be unassigned.')) return;
+  try {
+    await apiFetch(`/api/gyms/${gymId}`, { method:'DELETE' });
+    toast('Gym deleted'); renderGyms();
+  } catch(e) { toast('Error: ' + e.message); }
+}
+ 
+async function openGymDetail(gymId) {
+  activeGym = gymId;
+  showPage('gym-detail');
+  const el = $('gym-detail-content');
+  el.innerHTML = '<div class="empty" style="padding:2rem">Loading…</div>';
+  try {
+    const data = await apiFetch(`/api/gyms/${gymId}/fighters`);
+    const gym  = data.gym;
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:1.5rem">
+        <div class="gym-icon" style="width:52px;height:52px;font-size:24px">⌖</div>
+        <div>
+          <div style="font-size:20px;font-weight:600">${gym.name}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:2px">${gym.location || 'No location set'}</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" onclick="showPage('gym-assign');loadAssignFighters()">+ Assign fighter</button>
+      </div>
+      <div class="card" style="padding:0 1.25rem">
+        <div style="padding:.75rem 0;font-weight:600;font-size:14px;display:flex;justify-content:space-between;align-items:center">
+          <span>Fighters</span>
+          <span style="font-size:12px;color:var(--muted)">${data.fighters.length} total</span>
+        </div>
+        ${data.fighters.length ? data.fighters.map(f => {
+          const total   = f.wins + f.losses + f.draws;
+          const eloCls  = f.elo > 0 ? 'elo-positive' : f.elo < 0 ? 'elo-negative' : 'elo-neutral';
+          const eloStr  = (f.elo >= 0 ? '+' : '') + (f.elo || 0).toFixed(1);
+          return `<div class="gym-fighter-row">
+            <div class="avatar" style="cursor:pointer" onclick="openFighterDetail(${f.id},'${f.sport}')">${initials(f.name)}</div>
+            <div style="flex:1;cursor:pointer" onclick="openFighterDetail(${f.id},'${f.sport}')">
+              <div style="font-weight:500">${f.name} ${sportBadge(f.sport)}</div>
+              <div style="font-size:12px;color:var(--muted)">${f.wins}W · ${f.losses}L · ${f.draws}D · ${f.weight_kg}kg</div>
+            </div>
+            <span class="elo-pill ${eloCls}" style="margin-right:8px">${eloStr}</span>
+            <button class="btn btn-sm btn-danger" onclick="removeFromGym(${f.id},'${f.sport}')" style="padding:4px 10px">✕</button>
+          </div>`;
+        }).join('') : '<div class="empty" style="padding:1.5rem">No fighters assigned yet.</div>'}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="empty">Could not load gym.</div>`;
+  }
+}
+ 
+async function loadAssignFighters() {
+  const sport = $('ga-sport').value;
+  const data  = await apiFetch(`/api/${sport}/fighters`);
+  // filter out fighters already in a gym
+  const available = data.fighters.filter(f => !f.gym_id);
+  $('ga-fighter').innerHTML = available.length
+    ? available.map(f => `<option value="${f.id}">${f.name}</option>`).join('')
+    : '<option value="">No available fighters</option>';
+}
+ 
+async function submitAssignFighter() {
+  const sport = $('ga-sport').value;
+  const fid   = $('ga-fighter').value;
+  if (!fid) { toast('No fighter selected'); return; }
+  try {
+    await apiFetch(`/api/gyms/${activeGym}/fighters/${fid}?sport=${sport}`, { method:'POST' });
+    toast('Fighter assigned');
+    await loadAll();
+    goBack();
+    openGymDetail(activeGym);
+  } catch(e) { toast('Error: ' + e.message); }
+}
+ 
+async function removeFromGym(fighterId, sport) {
+  if (!confirm('Remove this fighter from the gym?')) return;
+  try {
+    await apiFetch(`/api/gyms/${activeGym}/fighters/${fighterId}?sport=${sport}`, { method:'DELETE' });
+    toast('Fighter removed');
+    await loadAll();
+    openGymDetail(activeGym);
+  } catch(e) { toast('Error: ' + e.message); }
+}
+
 // ── boot function
 async function bootApp() {
   loadLocalData();

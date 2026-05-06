@@ -95,7 +95,7 @@ def compute_elo_for_pool(
     all_fights =[]
     for f in fighters:
         for fight in histories.get(f["id"], []):
-            all_fights.append({**fight, "_ifghter_id": f["id"], "_fighter_name": f["name"]})
+            all_fights.append({**fight, "_fighter_id": f["id"], "_fighter_name": f["name"]})
             # sorts all fights globally by date 
         all_fights.sort(key=lambda h:h ["date"])
 
@@ -105,7 +105,7 @@ def compute_elo_for_pool(
         for fight in all_fights:
             fid = fight["_fighter_id"]
             opp_name = fight["opponent"]
-            opp_id = name_to_id(opp_name)  # none if opponent not in pool
+            opp_id = name_to_id.get(opp_name)  # none if opponent not in pool
             r_fighter = ratings[fid]
             r_opp = ratings[opp_id] if opp_id else float(elo_start)
 
@@ -117,7 +117,7 @@ def compute_elo_for_pool(
             ratings[fid] += change
             if opp_id:
                 ratings[opp_id] -= change  # mirros change to the opponent 
-            return {fid: round (r,2) for fid, r in ratings.items()}
+        return {fid: round (r,2) for fid, r in ratings.items()}
         
 # victory profle method
 
@@ -159,7 +159,7 @@ def _profile (fighter:dict, history:list[dict], elo:float) -> dict:
     
     recent = sorted (history, key=lambda h:h ["date"], reverse = True) [:5]
     if recent: 
-        result_value = {"w": 1.0, "d": 0.5, "l": 0.0}
+        result_value = {"W": 1.0, "D": 0.5, "L": 0.0}
         weights = [5,4,3,2,1] [:len(recent)]
         weighted_sum = sum(result_value[h["result"]] * w for h, w in zip (recent,weights))
         recent_form = weighted_sum / sum(weights)
