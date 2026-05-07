@@ -9,7 +9,7 @@ all responses are json errors reutnr with appropriate status code
 
 
 
-import re
+
 
 from flask import Flask, jsonify, request, send_from_directory, session
 from fighter_database import FighterDB
@@ -35,6 +35,25 @@ auth_db = authDB(db_dir=DB_DIR)
 
 
 # addition of helpers
+
+
+
+def _coach_owns_fighter(sport:str,fighter_id:int, user:dict) -> bool:
+
+    """Check if a coach owns a specific fighter. returns true if the user 
+    is the coach of the gym who the fighter belongs to."""
+
+    if user["role"] == "admin":
+        return True
+    if user["role"] == "coach":
+        return False
+    with get_db(sport) as db:
+        fighter = db.get_fighter(fighter_id)
+    if not fighter or not fighter.get("gym_id"):
+        #fighter not in any gym 
+        return True
+    gym = auth_db.get_gym (fighter["gym_id"])
+    return gym is not None and gym["coach_id"] == user["id"]
 
 def get_db(sport: str) -> FighterDB:
     return FighterDB(sport, db_dir=DB_DIR)
@@ -67,7 +86,7 @@ def login_required(f):
 
 
 
-def roles_requried(*roles):
+def roles_required(*roles):
     '''restricts endpoints to certain roles'''
     def decorator(f):
         @functools.wraps(f)
@@ -188,12 +207,12 @@ def change_password():
 '''adding admin endpoints'''
 
 @app.route("/api/admin/users", methods=["GET"])
-@roles_requried("admin")
+@roles_required("admin")
 def list_users():
     return jsonify ({"users": auth_db.get_all_users()})
 
 @app.route("/api/admin/users/<int:user_id>/role", methods=["PUT"])
-@roles_requried ("admin")
+@roles_required ("admin")
 def admin_update_role(user_id):
     data = request.get_json(silent=True) or {}
     if "role" not in data:
@@ -206,7 +225,7 @@ def admin_update_role(user_id):
     
 
 @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
-@roles_requried ("admin")
+@roles_required ("admin")
 def admin_delete_user(user_id):
     if user_id == current_user ()["id"]:
         return err("cannot delete your own account")
@@ -244,7 +263,7 @@ def get_fighter(sport, fighter_id):
 
 
 @app.route("/api/<sport>/fighters", methods=["POST"])
-@roles_requried ("coach", "admin")
+@roles_required ("coach", "admin")
 def add_fighter(sport):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -265,7 +284,7 @@ def add_fighter(sport):
 
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>", methods=["PUT"])
-@roles_requried ("coach", "admin")
+@roles_required ("coach", "admin")
 def update_fighter(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -285,7 +304,7 @@ def update_fighter(sport, fighter_id):
 
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>", methods=["DELETE"])
-@roles_requried ("coach", "admin")
+@roles_required ("coach", "admin")
 def delete_fighter(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -311,7 +330,7 @@ def get_fighter_fights(sport, fighter_id):
 
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>/fights", methods=["POST"])
-@roles_requried ("coach", "promoter", "admin")
+@roles_required ("coach", "promoter", "admin")
 def add_fight(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
@@ -415,7 +434,7 @@ def list_gyms():
     return jsonify({"gyms": gyms})
 
 @app.route("/api/gyms", methods=["POST"])
-@roles_requried("coach", "admin")
+@roles_required("coach", "admin")
 def create_gym():
     data,error = require_json("name")
     if error:
@@ -430,7 +449,7 @@ def create_gym():
     except ValueError as e:
         return err(str(e))
     
-@app.route("/api/gyms/<int:gym_id>", methods=["PUT"])
+@app.route("/api/gyms/<int:gym_id>", methods=["GET"])
 @login_required
 def get_gym(gym_id):
     gym = auth_db.get_gym(gym_id)
@@ -438,8 +457,8 @@ def get_gym(gym_id):
         return err("Gym not found", 404)
     return jsonify({"gym": gym})
 
-@app.route("/api/gyms/<int:gym_id>",methods=["put"])
-@roles_requried("coach", "admin")
+@app.route("/api/gyms/<int:gym_id>",methods=["PUT"])
+@roles_required("coach", "admin")
 def update_gym(gym_id):
     data = request.get_json(silent=True) or {}
     try:
@@ -454,10 +473,10 @@ def update_gym(gym_id):
         return err(str(e), 403)
 
 @app.route("/api/gyms/<int:gym_id>", methods=["DELETE"])
-@roles_requried("coach", "admin")
+@roles_required("coach", "admin")
 def delete_gym(gym_id):
     try:
-        auth_db.delete_gym(gym_id)
+        auth_db.delete_gym(gym_id, current_user()["id"])
         return jsonify({"message": "Gym deleted successfully"})
     except ValueError as e:
         return err(str(e), 403)
@@ -482,11 +501,11 @@ def gym_fighters(gym_id):
                 elo_ratings = compute_elo_for_pool(all_fighters, all_histories)
                 for f in fighters:
                     results.append({**f, "sport": sport,
-                                    "elo": elo_ratings(f["id"],00)})
-        return jsonify({"gyms": gym, "fighters": results})
+                                    "elo": elo_ratings.get(f["id"],0.0)})
+    return jsonify({"gym": gym, "fighters": results})
 
 @app.route("/api/gyms/<int:gym_id>/fighters/<int:fighter_id>", methods=["POST"])
-@roles_requried("coach", "admin")
+@roles_required("coach", "admin")
 def assign_fighter_to_gym(gym_id, fighter_id):
     '''assings a fighter to a gym. a coach must own the gym'''
     try:
@@ -505,7 +524,7 @@ def assign_fighter_to_gym(gym_id, fighter_id):
     
 
 @app.route("/api/gyms/<int:gym_id>/fighters/<int:fighter_id>", methods=["DELETE"])
-@roles_requried("coach", "admin")
+@roles_required("coach", "admin")
 def remove_fighter_from_gym(gym_id, fighter_id):
     """Remove a fighter from the gym (sets gym_id to null)."""
     try:
@@ -521,6 +540,63 @@ def remove_fighter_from_gym(gym_id, fighter_id):
         return jsonify({"removed": fighter_id, "gym_id": gym_id})
     except ValueError as e:
         return err(str(e), 404)
+    
+
+# event fight cards
+
+@app.route("/api/events/<event_id>/bouts", methods=["GET"])
+@login_required
+def get_event_bouts(event_id):
+    """reuturns all bouts on a fight card for all sports"""
+    bouts = []
+    for sport in VALID_SPORTS:
+        with get_db(sport) as db:
+            bouts.extend(db.get_bouts_for_events(event_id))
+    return jsonify ({"event_id": event_id, "bouts": bouts})
+
+
+@app.route ("/api/events/<event_id>/bouts", methods=["POST"])
+@roles_required ("coach", "promoter", "admin")
+def add_event_bout(event_id):
+    """adds bouts to event card. 
+    coaches can only add fighterse from their own gym"""
+    data, error = require_json("sport", "fighter_a_id", "fighter_b_id")
+    if error:
+        return error
+    sport = data["sport"]
+    if sport not in VALID_SPORTS:
+        return err(f"unknown sport: {sport}")
+    user = current_user()
+    fighter_a = int(data["fighter_a_id"])
+    fighter_b = int(data["fighter_b_id"])
+    if fighter_a == fighter_b:
+        return err(" a fighter cannot fight themselves")
+    # both fighters must belong to a gym
+
+    if user["role"] == "coach":
+        if not _coach_owns_fighter(sport, fighter_a,user):
+            return err("fighter A is not in your gym", 403)
+        if not _coach_owns_fighter(sport, fighter_b,user):
+            return err("fighter B is not in your gym", 403)
+    try:
+        with get_db(sport) as db:
+            bout = db.add_bout(event_id, fighter_a, fighter_b)
+        return jsonify ({"bout": bout}), 201
+    except ValueError as e:
+        return err(str(e))
+    
+@app.route("/api/events/<event_id>/bouts/<int:bout_id>", methods=["DELETE"])
+@roles_required("coach", "promoter", "admin")
+def delete_event_bout(event_id, bout_id):
+    """Remove a bout from the fight card."""
+    for sport in VALID_SPORTS:
+        with get_db(sport) as db:
+            try:
+                db.delete_bout(bout_id)
+                return jsonify({"deleted": bout_id})
+            except ValueError:
+                continue
+    return err("Bout not found.", 404)
     
 
 if __name__ == "__main__":

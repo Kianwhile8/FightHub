@@ -71,19 +71,19 @@
   h1 { font-size: 22px; font-weight: 600; margin-bottom: 1.5rem; }
   h2 { font-size: 16px; font-weight: 600; margin-bottom: .75rem; }
 
+  /* ── cards ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
+    box-shadow: var(--shadow);
+  }
+
   /* ── stat grid ── */
   .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 1.5rem; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
           padding: 1rem; text-align: center; box-shadow: var(--shadow); }
   .stat-val { font-size: 26px; font-weight: 600; }
   .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
-    /* ── cards ── */
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
-    box-shadow: var(--shadow);
-  }
 
   /* ── fighter rows ── */
   .fighter-row {
@@ -237,6 +237,34 @@
   .elo-negative { background: var(--danger-bg);  color: var(--danger); }
   .elo-neutral  { background: #f3f4f6;            color: #6b7280; }
 
+
+  /* ── gym panel ── */
+  .gym-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem; margin-bottom: 10px;
+    cursor: pointer; box-shadow: var(--shadow);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .gym-card:hover { border-color: #c0c0bc; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .gym-card-header { display: flex; align-items: center; gap: 12px; }
+  .gym-icon { width: 42px; height: 42px; border-radius: 10px; background: var(--bg);
+              border: 1px solid var(--border); display: flex; align-items: center;
+              justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .gym-fighter-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .gym-fighter-row:last-child { border-bottom: none; }
+
+  /* fight card */
+  .bout-row {
+    display: flex; align-items: center; gap: 12px; padding: 11px 0;
+    border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .bout-row:last-child { border-bottom: none; }
+  .bout-fighter { flex: 1; font-weight: 500; }
+  .bout-vs { color: var(--muted); font-size: 12px; padding: 0 8px; flex-shrink: 0; }
+  .bout-sport { flex-shrink: 0; }
   /* ── divider ── */
   .divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 
@@ -248,7 +276,7 @@
 
   .empty { text-align: center; color: var(--muted); padding: 3rem 0; font-size: 14px; }
 
-  /* ── sidebar nav role changes visability ── */
+  /* ── sidebar nav visibility by role ── */
   .sidebar .fighter-only,
   .sidebar .coach-only,
   .sidebar .promoter-only,
@@ -368,6 +396,7 @@
 
     <div class="nav-section mgmt-only">Management</div>
     <button class="nav-item coach-only" data-page="matchmake"><i class="icon">⇄</i><span>Matchmake</span></button>
+    <button class="nav-item coach-only" data-page="gyms"><i class="icon">⌖</i><span>My gyms</span></button>
     <button class="nav-item coach-only" data-page="add-fighter"><i class="icon">+</i><span>Add fighter</span></button>
     <button class="nav-item admin-only" data-page="admin"><i class="icon">⚙</i><span>Admin</span></button>
     <button class="nav-item mgmt-only" data-page="add-event"><i class="icon">◆</i><span>Add event</span></button>
@@ -581,6 +610,81 @@
       </div>
     </div>
 
+    <!-- gyms -->
+    <div id="page-gyms" class="page">
+      <div id="gyms-list-view">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+          <h1 style="margin:0">My gyms</h1>
+          <button class="btn btn-primary btn-sm" onclick="showPage('gym-create');refresh('gym-create')">+ New gym</button>
+        </div>
+        <div id="gyms-list"><div class="empty">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- gym create -->
+    <div id="page-gym-create" class="page">
+      <button class="back-btn" onclick="showPage('gyms');refresh('gyms')">← Back to gyms</button>
+      <h1>Create gym</h1>
+      <div class="card" style="max-width:480px">
+        <div class="form-group"><label class="form-label">Gym name</label>
+          <input id="gc-name" type="text" placeholder="e.g. City Combat"></div>
+        <div class="form-group"><label class="form-label">Location</label>
+          <input id="gc-location" type="text" placeholder="e.g. Manchester"></div>
+        <button class="btn btn-primary" onclick="submitCreateGym()">Create gym</button>
+      </div>
+    </div>
+
+    <!-- gym detail -->
+    <div id="page-gym-detail" class="page">
+      <button class="back-btn" onclick="showPage('gyms');refresh('gyms')">← Back to gyms</button>
+      <div id="gym-detail-content"></div>
+    </div>
+
+    <!-- gym assign fighter -->
+    <div id="page-gym-assign" class="page">
+      <button class="back-btn" onclick="goBack()">← Back to gym</button>
+      <h1>Assign fighter to gym</h1>
+      <div class="card" style="max-width:480px">
+        <div class="form-group"><label class="form-label">Sport</label>
+          <select id="ga-sport" onchange="loadAssignFighters()">
+            <option value="kickboxing">Kickboxing</option>
+            <option value="mma">MMA</option>
+            <option value="boxing">Boxing</option>
+          </select></div>
+        <div class="form-group"><label class="form-label">Fighter</label>
+          <select id="ga-fighter"></select></div>
+        <button class="btn btn-primary" onclick="submitAssignFighter()">Assign to gym</button>
+      </div>
+    </div>
+
+    <!-- add bout to event -->
+    <div id="page-add-bout" class="page">
+      <button class="back-btn" onclick="goBack()">← Back to event</button>
+      <h1>Add bout to card</h1>
+      <div class="card" style="max-width:560px">
+        <div class="form-group">
+          <label class="form-label">Sport</label>
+          <select id="bout-sport" onchange="loadBoutFighters()">
+            <option value="kickboxing">Kickboxing</option>
+            <option value="mma">MMA</option>
+            <option value="boxing">Boxing</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Fighter A</label>
+            <select id="bout-fighter-a" onchange="updateBoutMatchScore()"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fighter B</label>
+            <select id="bout-fighter-b" onchange="updateBoutMatchScore()"></select>
+          </div>
+        </div>
+        <div id="bout-match-preview" style="margin-bottom:.875rem"></div>
+        <button class="btn btn-primary" onclick="submitAddBout()">Add to fight card</button>
+      </div>
+    </div>
+
     <!-- fighter detail -->
     <div id="page-fighter-detail" class="page">
       <button class="back-btn" onclick="goBack()">← Back</button>
@@ -621,13 +725,13 @@
 
   </main>
 
-  <!-- auth screen placeholder -->
+  <!-- auth screen placeholder — moved outside shell below -->
 
 </main>
 
 </div>
 
-<!-- ── auth screen  ── -->
+<!-- ── auth screen (outside app-shell so it's always visible) ── -->
 <div class="auth-screen" id="auth-screen">
   <div class="auth-box">
     <div class="auth-logo">Fight<span>DB</span></div>
@@ -735,7 +839,7 @@ function loadLocalData() {
   }
 }
 
-// ── utilities 
+// ── utilities
 const $ = id => document.getElementById(id);
 const initials = name => name.trim().split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 
@@ -852,14 +956,14 @@ document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
   btn.addEventListener('click', ()=>{ showPage(btn.dataset.page); refresh(btn.dataset.page); });
 });
 
-// ── role server driven instead of toggled 
+// ── role (now driven by server)
 function setRole(role) {
   applyRole(role);
   showPage('dashboard');
   refresh('dashboard');
 }
 
-// ── data 
+// ── data
 async function loadAll() {
   const sports = ['kickboxing','mma','boxing'];
   const [fighters, fights] = await Promise.all([
@@ -887,6 +991,7 @@ function refresh(page) {
   if (page==='profile')    renderProfile();
   if (page==='admin')      renderAdmin();
   if (page==='add-event')  populateVenueSelect();
+  if (page==='gyms')        renderGyms();
 }
 
 // ── dashboard 
@@ -934,7 +1039,7 @@ function miniEventRow(e) {
   </div>`;
 }
 
-// ── fighter list page 
+// ── fighter list
 document.querySelectorAll('#sport-chips .chip').forEach(chip=>{
   chip.addEventListener('click',()=>{
     document.querySelectorAll('#sport-chips .chip').forEach(c=>c.classList.remove('active'));
@@ -969,7 +1074,7 @@ function renderFighters() {
   attachFighterRowListeners(el);
 }
 
-// ── events
+// ── events 
 document.querySelectorAll('#event-chips .chip').forEach(chip=>{
   chip.addEventListener('click',()=>{
     document.querySelectorAll('#event-chips .chip').forEach(c=>c.classList.remove('active'));
@@ -1023,16 +1128,35 @@ function renderEvents() {
     card.addEventListener('click',()=>openEventDetail(parseInt(card.dataset.eid))));
 }
 
-function openEventDetail(id) {
+async function openEventDetail(id) {
   activeEvent = id;
   const e = allEvents.find(ev=>ev.id===id);
   if (!e) return;
+  showPage('event-detail');
   const venue  = venueById(e.venueId);
   const st     = eventStatus(e.date);
   const stLabel= st==='today'?'Today':st==='upcoming'?'Upcoming':'Past';
   const d      = new Date(e.date);
   const dateStr= d.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const isMgmt = currentUser && ['coach','promoter','admin'].includes(currentUser.role);
+
+  // Load fight card from API
+  let bouts = [];
+  try {
+    const boutData = await apiFetch(`/api/events/${e.id}/bouts`);
+    bouts = boutData.bouts || [];
+  } catch(_) {}
+
+  const boutRows = bouts.length
+    ? bouts.map(b => `
+        <div class="bout-row">
+          <div class="bout-fighter">${b.fighter_a.name} <span style="font-size:12px;color:var(--muted)">${b.fighter_a.weight_kg}kg</span></div>
+          <div class="bout-vs">vs</div>
+          <div class="bout-fighter">${b.fighter_b.name} <span style="font-size:12px;color:var(--muted)">${b.fighter_b.weight_kg}kg</span></div>
+          <div class="bout-sport">${sportBadge(b.sport)}</div>
+          ${isMgmt ? `<button class="btn btn-sm btn-danger" onclick="deleteBout('${e.id}',${b.id})" style="padding:3px 8px">✕</button>` : ''}
+        </div>`).join('')
+    : '<div class="empty" style="padding:1.5rem">No bouts added yet.</div>';
 
   $('event-detail-content').innerHTML = `
     <div class="event-detail-banner">
@@ -1043,7 +1167,7 @@ function openEventDetail(id) {
       <div class="card" style="margin:0">
         <h2 style="font-size:14px;margin-bottom:.75rem">Venue</h2>
         ${venue ? `<div class="venue-block">
-          <div class="venue-icon">⌂</div>
+          <div class="venue-icon">&#8962;</div>
           <div>
             <div class="venue-name">${venue.name}</div>
             <div class="venue-addr">${venue.address}, ${venue.city}</div>
@@ -1057,11 +1181,32 @@ function openEventDetail(id) {
         ${e.desc ? `<p style="font-size:13px;color:var(--muted);margin-top:.75rem">${e.desc}</p>` : ''}
       </div>
     </div>
+    <div class="card" style="padding:0 1.25rem;margin-bottom:1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 0;font-weight:600;font-size:14px">
+        <span>Fight card</span>
+        <span style="font-size:12px;color:var(--muted);font-weight:400">${bouts.length} bout${bouts.length!==1?'s':''}</span>
+      </div>
+      ${boutRows}
+    </div>
     ${isMgmt ? `<div class="btn-row">
+      <button class="btn btn-sm btn-primary" onclick="showAddBoutForm('${e.id}')">+ Add bout</button>
       <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})">Delete event</button>
     </div>` : ''}`;
+}
 
-  showPage('event-detail');
+async function deleteBout(eventId, boutId) {
+  if (!confirm('Remove this bout from the card?')) return;
+  try {
+    await apiFetch(`/api/events/${eventId}/bouts/${boutId}`, {method:'DELETE'});
+    toast('Bout removed');
+    openEventDetail(activeEvent);
+  } catch(e) { toast('Error: ' + e.message); }
+}
+
+function showAddBoutForm(eventId) {
+  activeEvent = eventId;
+  showPage('add-bout');
+  loadBoutFighters();
 }
 
 function deleteEvent(id) {
@@ -1120,7 +1265,7 @@ function submitAddVenue() {
   $('av-name').value=''; $('av-addr').value=''; $('av-city').value=''; $('av-cap').value='';
 }
 
-// ── fighter detail
+// ── fighter detail 
 async function openFighterDetail(id, sport) {
   activeFighter = {id:parseInt(id), sport};
   showPage('fighter-detail');
@@ -1310,7 +1455,7 @@ async function linkFighterRecord() {
   } catch(e) { toast('Error: '+e.message); }
 }
 
-// ── add fighter 
+// ── add fighter
 async function submitAddFighter() {
   const name=($('af-name').value||'').trim();
   const age=parseInt($('af-age').value);
@@ -1325,7 +1470,7 @@ async function submitAddFighter() {
   } catch(e){toast('Error: '+e.message);}
 }
 
-// ── rankings 
+// ── rankings
 
 document.querySelectorAll('#rankings-chips .chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -1409,11 +1554,85 @@ async function adminDeleteUser(userId) {
   } catch(e) { toast('Error: '+e.message); }
 }
 
+// ── event bouts 
 
-// - gym features
+async function loadBoutFighters() {
+  const sport = $('bout-sport').value;
+  const user  = currentUser;
+  let fighters = [];
+
+  if (user && user.role === 'coach') {
+    // Coaches: only fighters from their gyms
+    try {
+      const gymsData = await apiFetch('/api/gyms');
+      const gymIds   = (gymsData.gyms || []).map(g => g.id);
+      const all      = await apiFetch(`/api/${sport}/fighters`);
+      fighters = (all.fighters || []).filter(f => gymIds.includes(f.gym_id));
+    } catch(_) {}
+  } else {
+    // Promoters / admins: all fighters
+    try {
+      const data = await apiFetch(`/api/${sport}/fighters`);
+      fighters = data.fighters || [];
+    } catch(_) {}
+  }
+
+  const opts = fighters.length
+    ? fighters.map(f => `<option value="${f.id}">${f.name} (${f.wins}-${f.losses}-${f.draws})</option>`).join('')
+    : '<option value="">No fighters available</option>';
+  $('bout-fighter-a').innerHTML = opts;
+  $('bout-fighter-b').innerHTML = opts;
+  updateBoutMatchScore();
+}
+
+async function updateBoutMatchScore() {
+  const sport = $('bout-sport').value;
+  const aidEl = $('bout-fighter-a');
+  const bidEl = $('bout-fighter-b');
+  const aid   = aidEl.value;
+  const bid   = bidEl.value;
+  const el    = $('bout-match-preview');
+  if (!aid || !bid || aid === bid) {
+    el.innerHTML = '';
+    return;
+  }
+  try {
+    const data = await apiFetch(`/api/${sport}/fighters/${aid}/matches`);
+    const match = (data.matches || []).find(m => String(m.id) === String(bid));
+    if (match) {
+      const cls = match.match_score >= 75 ? 'score-high' : match.match_score >= 50 ? 'score-mid' : 'score-low';
+      el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border-radius:8px">
+        <span style="font-size:13px;flex:1">Match compatibility</span>
+        <span class="match-score-pill ${cls}">${match.match_score}% match</span>
+        <span style="font-size:12px;color:var(--muted)">Weight diff: ${match.weight_diff}kg</span>
+      </div>`;
+    } else {
+      el.innerHTML = '';
+    }
+  } catch(_) { el.innerHTML = ''; }
+}
+
+async function submitAddBout() {
+  const sport     = $('bout-sport').value;
+  const fighterA  = $('bout-fighter-a').value;
+  const fighterB  = $('bout-fighter-b').value;
+  if (!fighterA || !fighterB) { toast('Select both fighters'); return; }
+  if (fighterA === fighterB) { toast('Select two different fighters'); return; }
+  try {
+    await apiFetch(`/api/events/${activeEvent}/bouts`, {
+      method: 'POST',
+      body: JSON.stringify({sport, fighter_a_id: fighterA, fighter_b_id: fighterB})
+    });
+    toast('Bout added to fight card');
+    goBack();
+    openEventDetail(activeEvent);
+  } catch(e) { toast('Error: ' + e.message); }
+}
+
+// ── gyms
 
 let activeGym = null;
- 
+
 async function renderGyms() {
   const el = $('gyms-list');
   el.innerHTML = '<div class="empty">Loading…</div>';
@@ -1438,7 +1657,7 @@ async function renderGyms() {
     el.innerHTML = `<div class="empty">Could not load gyms.</div>`;
   }
 }
- 
+
 async function submitCreateGym() {
   const name     = $('gc-name').value.trim();
   const location = $('gc-location').value.trim();
@@ -1450,7 +1669,7 @@ async function submitCreateGym() {
     showPage('gyms'); renderGyms();
   } catch(e) { toast('Error: ' + e.message); }
 }
- 
+
 async function deleteGym(gymId) {
   if (!confirm('Delete this gym? Fighters will be unassigned.')) return;
   try {
@@ -1458,7 +1677,7 @@ async function deleteGym(gymId) {
     toast('Gym deleted'); renderGyms();
   } catch(e) { toast('Error: ' + e.message); }
 }
- 
+
 async function openGymDetail(gymId) {
   activeGym = gymId;
   showPage('gym-detail');
@@ -1502,7 +1721,7 @@ async function openGymDetail(gymId) {
     el.innerHTML = `<div class="empty">Could not load gym.</div>`;
   }
 }
- 
+
 async function loadAssignFighters() {
   const sport = $('ga-sport').value;
   const data  = await apiFetch(`/api/${sport}/fighters`);
@@ -1512,7 +1731,7 @@ async function loadAssignFighters() {
     ? available.map(f => `<option value="${f.id}">${f.name}</option>`).join('')
     : '<option value="">No available fighters</option>';
 }
- 
+
 async function submitAssignFighter() {
   const sport = $('ga-sport').value;
   const fid   = $('ga-fighter').value;
@@ -1525,7 +1744,7 @@ async function submitAssignFighter() {
     openGymDetail(activeGym);
   } catch(e) { toast('Error: ' + e.message); }
 }
- 
+
 async function removeFromGym(fighterId, sport) {
   if (!confirm('Remove this fighter from the gym?')) return;
   try {
@@ -1536,7 +1755,7 @@ async function removeFromGym(fighterId, sport) {
   } catch(e) { toast('Error: ' + e.message); }
 }
 
-// ── boot function
+// ── boot 
 async function bootApp() {
   loadLocalData();
   try {

@@ -10,6 +10,7 @@ records    — fighter_id, wins, losses, draws          (1-to-1 with fighters)
 fight_history — id, fighter_id, opponent_name, result, method, date
 """
 
+import re
 import sqlite3
 from datetime import date as _date
 
@@ -75,6 +76,7 @@ class FighterDB:
             "wins":      row[4],
             "losses":    row[5],
             "draws":     row[6],
+            "gym_id":    row[7] if len(row) > 7 else None
         }
 
     #  fighter CRUD 
@@ -244,7 +246,7 @@ class FighterDB:
         return rank_opponents(fighter, fighter_history, candidates)
     
 
-    def gym_assign(self, fighter_id: int, gym_id: int | None) -> None:
+    def assign_gym(self, fighter_id: int, gym_id: int | None) -> None:
         '''assign or remove a fighter from a gym'''
         
         cur = self._conn.cursor()
@@ -262,6 +264,81 @@ class FighterDB:
                     WHERE f.gym_id =?
                     ORDER BY f.name""",(gym_id,))
         return [self._fighter_row(r) for r in cur.fetchall()]
+    
+    # bouts for events
+
+    def add_bout(self,event_id:str, fighter_a_id:int, fighter_b_id:int) -> dict:
+        '''adds 1 more between 2 fighters on an event card'''
+        from datetime import datetime as _dt
+
+        cur = self._conn.cursor()
+        #validation that both fighters exist
+        for fid in (fighter_a_id, fighter_b_id):
+            if not self.get_fighter(fid):
+                raise ValueError(f"Fighter {fid} not found.")
+        cur.execute("""
+                    INSERT INTO event_bouts (event_id,sport, fighter_a_id, fighter_b_id, created_at)
+                    VALUES (?,?,?,?,?)
+                    """, (str(event_id), self.sport, fighter_a_id, fighter_b_id, _dt.now().isoformat))
+        self.__conn.commit()
+        return self.get_bout(cur.lastrowid)
+    
+    def get_bout(self,bout_id:int) -> dict | None:
+        cur = self._conn.cursor()
+        cur.execute("""
+                    SELECT b.id, b.event_id, b.sport,
+                    fa.id, fa.name, fa.weight,
+                    fb.id, fb.name, fb.weight,
+                    b.created_at
+                    FROM event_bouts b
+                    JOIN fighters fa ON fa.id = b.fighter_a_id
+                    JOIN fighters fb ON fb.id = b.fighter_b_id
+                    WHERE b.id =?""", (bout_id,))
+        return self._bout_row(cur.fetchone())
+    
+    def get_bouts_for_events(self, event_id:str) -> list[dict]:
+        """returns all bouts on a specific card for selected sport"""
+
+        cur= self._conn.cursor()
+        cur.execute ("""
+            SELECT b.id, b.event_id, b.sport,
+                fa.id, fa.name, fa.weight,
+                fb.id, fb.name, fb.weight,
+                b.created_at
+            FROM event_bouts b
+            JOIN fighters fa on fa.id = b.fighter_b_id
+            JOIN fighters fb ON fb.id = b.fighter_b_id
+            WHERE b.event_id =?
+            ORDER by b.created_at""",(str(event_id),))
+        return [self._bout_row(r) for r in cur.fetchall()]
+    
+    def delete_bout(self,bout_id:int) -> None:
+        cur = self._conn.cursor()
+        cur.execute ("DELETE FROM event_bouts WHERE id =?", (bout_id,))
+        if cur.rowcount == 0:
+            raise ValueError (f"bout {bout_id} not found")
+        self._conn.commit
+    
+
+    @staticmethod
+    def _bout_row(row) -> dict | None:
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "event_id": row[1],
+            "sport": row[2],
+            "fighter_a_id": row[3],
+            "fighter_a_name": row[4],
+            "fighter_a_weight_kg": row[5],
+            "fighter_b_id": row[6],
+            "fighter_b_name": row[7],
+            "fighter_b_weight_kg": row[8],
+            "created_at": row[9]
+        }
+
+
+
     
 
     #  housekeeping 
