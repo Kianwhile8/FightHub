@@ -1237,19 +1237,20 @@ function handleVenueSelect() {
 }
 
 function submitAddEvent() {
-  const name    = $('ae-name').value.trim();
-  const date    = $('ae-date').value;
-  const time    = $('ae-time').value;
-  const venueEl = $('ae-venue');
+  const name = $('ae-name').value.trim();
+  const date = $('ae-date').value;
+  const time = $('ae-time').value;
+  const vid  = parseInt($('ae-venue').value);
+  const sports = ['kickboxing','mma','boxing'].filter(s=>$('ae-'+s.slice(0,2)==='ki'?'ae-kb':s==='mma'?'ae-mma':'ae-box').checked);
+
+
+  // fix sport id mapping
   const sportIds = [];
   if ($('ae-kb').checked)  sportIds.push('kickboxing');
   if ($('ae-mma').checked) sportIds.push('mma');
   if ($('ae-box').checked) sportIds.push('boxing');
-  if (!name || !date || !sportIds.length) { toast('Please fill in all required fields'); return; }
-
-  let vid = parseInt(venueEl.value);
-
-  // If new venue selected, create it first
+  if (!name||!date||!vid||!sportIds.length) { toast('Please fill in all required fields'); return; }
+   // If new venue selected, create it first
   if (venueEl.value === '__new__') {
     const vname = $('nv-name').value.trim();
     const vcity = $('nv-city').value.trim();
@@ -1268,25 +1269,18 @@ function submitAddEvent() {
     $('nv-name').value = ''; $('nv-addr').value = '';
     $('nv-city').value = ''; $('nv-cap').value  = '';
   }
-
-  if (!vid) { toast('Select or create a venue'); return; }
-
   const newEvent = {
-    id:           Date.now(),
-    name,
-    date,
-    time:         time || '19:00',
-    venueId:      vid,
-    sports:       sportIds,
-    desc:         $('ae-desc').value.trim(),
+    id: Date.now(), name, date, time: time||'12:00',
+    venueId: vid, sports: sportIds,
+    desc: $('ae-desc').value.trim(),
     organiserRole: currentUser ? currentUser.role : 'unknown',
   };
+  
   allEvents.push(newEvent);
   saveEvents();
   toast(`Event "${name}" created`);
-  $('ae-name').value = ''; $('ae-date').value = ''; $('ae-desc').value = '';
-  $('ae-kb').checked = $('ae-mma').checked = $('ae-box').checked = false;
-  populateVenueSelect();
+  $('ae-name').value=''; $('ae-date').value=''; $('ae-desc').value='';
+  $('ae-kb').checked=$('ae-mma').checked=$('ae-box').checked=false;
   showPage('events'); renderEvents();
 }
 
