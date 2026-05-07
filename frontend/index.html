@@ -557,28 +557,31 @@
     <!-- add event (coach + promoter) -->
     <div id="page-add-event" class="page">
       <h1>Add event</h1>
-      <div class="card" style="max-width:560px">
-        <div class="form-group"><label class="form-label">Event name</label>
-          <input id="ae-name" type="text" placeholder="e.g. Summer Showdown 2025"></div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Date</label>
-            <input id="ae-date" type="date"></div>
-          <div class="form-group"><label class="form-label">Time</label>
-            <input id="ae-time" type="time" value="19:00"></div>
-        </div>
-        <div class="form-group"><label class="form-label">Venue</label>
-          <select id="ae-venue"></select></div>
-        <div class="form-group"><label class="form-label">Sports featured</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" id="ae-kb" value="kickboxing"> Kickboxing</label>
-            <label><input type="checkbox" id="ae-mma" value="mma"> MMA</label>
-            <label><input type="checkbox" id="ae-box" value="boxing"> Boxing</label>
-          </div></div>
-        <div class="form-group"><label class="form-label">Description (optional)</label>
-          <textarea id="ae-desc" placeholder="Any additional details…"></textarea></div>
-        <button class="btn btn-primary" onclick="submitAddEvent()">Create event</button>
-      </div>
+      <div class="form-group">
+  <label class="form-label">Venue</label>
+  <select id="ae-venue" onchange="handleVenueSelect()"></select>
+</div>
+<div id="new-venue-form" style="display:none;background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:.875rem">
+  <div style="font-size:12px;font-weight:500;margin-bottom:.75rem;color:var(--muted)">New venue details</div>
+  <div class="form-group">
+    <label class="form-label">Venue name</label>
+    <input id="nv-name" type="text" placeholder="e.g. City Sports Hall">
+  </div>
+  <div class="form-row">
+    <div class="form-group">
+      <label class="form-label">Address</label>
+      <input id="nv-addr" type="text" placeholder="123 Main St">
     </div>
+    <div class="form-group">
+      <label class="form-label">City</label>
+      <input id="nv-city" type="text" placeholder="Manchester">
+    </div>
+  </div>
+  <div class="form-group">
+    <label class="form-label">Capacity</label>
+    <input id="nv-cap" type="number" placeholder="500" min="1">
+  </div>
+</div>
 
     <!-- add venue (promoter only) -->
     <div id="page-add-venue" class="page">
@@ -1220,34 +1223,70 @@ function deleteEvent(id) {
 
 // ── add event 
 function populateVenueSelect() {
-  $('ae-venue').innerHTML = allVenues.length
-    ? allVenues.map(v=>`<option value="${v.id}">${v.name}, ${v.city}</option>`).join('')
-    : '<option value="">No venues yet — add one first</option>';
+  const sel = $('ae-venue');
+  sel.innerHTML = allVenues.length
+    ? allVenues.map(v => `<option value="${v.id}">${v.name}, ${v.city}</option>`).join('')
+      + '<option value="__new__">+ Add new venue...</option>'
+    : '<option value="__new__">+ Add new venue...</option>';
+  handleVenueSelect();
+}
+
+function handleVenueSelect() {
+  const isNew = $('ae-venue').value === '__new__';
+  $('new-venue-form').style.display = isNew ? 'block' : 'none';
 }
 
 function submitAddEvent() {
-  const name = $('ae-name').value.trim();
-  const date = $('ae-date').value;
-  const time = $('ae-time').value;
-  const vid  = parseInt($('ae-venue').value);
-  const sports = ['kickboxing','mma','boxing'].filter(s=>$('ae-'+s.slice(0,2)==='ki'?'ae-kb':s==='mma'?'ae-mma':'ae-box').checked);
-  // fix sport id mapping
+  const name    = $('ae-name').value.trim();
+  const date    = $('ae-date').value;
+  const time    = $('ae-time').value;
+  const venueEl = $('ae-venue');
   const sportIds = [];
   if ($('ae-kb').checked)  sportIds.push('kickboxing');
   if ($('ae-mma').checked) sportIds.push('mma');
   if ($('ae-box').checked) sportIds.push('boxing');
-  if (!name||!date||!vid||!sportIds.length) { toast('Please fill in all required fields'); return; }
+  if (!name || !date || !sportIds.length) { toast('Please fill in all required fields'); return; }
+
+  let vid = parseInt(venueEl.value);
+
+  // If new venue selected, create it first
+  if (venueEl.value === '__new__') {
+    const vname = $('nv-name').value.trim();
+    const vcity = $('nv-city').value.trim();
+    if (!vname || !vcity) { toast('Enter venue name and city'); return; }
+    const newVenue = {
+      id:       Date.now(),
+      name:     vname,
+      address:  $('nv-addr').value.trim(),
+      city:     vcity,
+      capacity: parseInt($('nv-cap').value) || 0,
+    };
+    allVenues.push(newVenue);
+    saveVenues();
+    vid = newVenue.id;
+    // Reset new venue fields
+    $('nv-name').value = ''; $('nv-addr').value = '';
+    $('nv-city').value = ''; $('nv-cap').value  = '';
+  }
+
+  if (!vid) { toast('Select or create a venue'); return; }
+
   const newEvent = {
-    id: Date.now(), name, date, time: time||'19:00',
-    venueId: vid, sports: sportIds,
-    desc: $('ae-desc').value.trim(),
+    id:           Date.now(),
+    name,
+    date,
+    time:         time || '19:00',
+    venueId:      vid,
+    sports:       sportIds,
+    desc:         $('ae-desc').value.trim(),
     organiserRole: currentUser ? currentUser.role : 'unknown',
   };
   allEvents.push(newEvent);
   saveEvents();
   toast(`Event "${name}" created`);
-  $('ae-name').value=''; $('ae-date').value=''; $('ae-desc').value='';
-  $('ae-kb').checked=$('ae-mma').checked=$('ae-box').checked=false;
+  $('ae-name').value = ''; $('ae-date').value = ''; $('ae-desc').value = '';
+  $('ae-kb').checked = $('ae-mma').checked = $('ae-box').checked = false;
+  populateVenueSelect();
   showPage('events'); renderEvents();
 }
 
