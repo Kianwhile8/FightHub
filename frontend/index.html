@@ -8,10 +8,10 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:         #f5f5f3;
-    --surface:    #ffffff;
+    --bg:         #000000;
+    --surface:    #5e5c5c;
     --border:     #e4e4e0;
-    --text:       #1a1a18;
+    --text:       #dbdbce;
     --muted:      #6b6b67;
     --success:    #15803d;
     --success-bg: #dcfce7;
@@ -107,7 +107,7 @@
     padding: 1.25rem; margin-bottom: 10px; cursor: pointer; box-shadow: var(--shadow);
     transition: border-color .15s, box-shadow .15s;
   }
-  .event-card:hover { border-color: #c0c0bc; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .event-card:hover { border-color: #494948; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
   .event-card-header { display: flex; align-items: flex-start; gap: 14px; }
   .event-date-block {
     background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
@@ -122,15 +122,15 @@
     font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; white-space: nowrap;
   }
   .status-upcoming { background: var(--info-bg);    color: var(--info); }
-  .status-past     { background: #f3f4f6;            color: #6b7280; }
+  .status-past     { background: #3c3d3d;            color: #6b7280; }
   .status-today    { background: var(--success-bg);  color: var(--success); }
 
   /* ── event detail ── */
   .event-detail-banner {
-    background: var(--text); color: #fff; border-radius: var(--radius);
+    background: var(--text); color: #616161; border-radius: var(--radius);
     padding: 1.5rem; margin-bottom: 1rem;
   }
-  .event-detail-banner h2 { color: #fff; margin-bottom: .25rem; font-size: 20px; }
+  .event-detail-banner h2 { color: #6e6d6d; margin-bottom: .25rem; font-size: 20px; }
   .event-detail-meta { font-size: 14px; opacity: .7; }
   .venue-block { display: flex; gap: 10px; align-items: flex-start; }
   .venue-icon  { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
@@ -139,8 +139,8 @@
 
   /* ── badges ── */
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500; white-space: nowrap; }
-  .badge-kb  { background: #ede9fe; color: #5b21b6; }
-  .badge-mma { background: #fee2e2; color: #991b1b; }
+  .badge-kb  { background: #676768; color: #5b21b6; }
+  .badge-mma { background: #616060; color: #991b1b; }
   .badge-box { background: #d1fae5; color: #065f46; }
 
   /* ── forms ── */
@@ -245,7 +245,7 @@
     cursor: pointer; box-shadow: var(--shadow);
     transition: border-color .15s, box-shadow .15s;
   }
-  .gym-card:hover { border-color: #c0c0bc; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .gym-card:hover { border-color: #505050; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
   .gym-card-header { display: flex; align-items: center; gap: 12px; }
   .gym-icon { width: 42px; height: 42px; border-radius: 10px; background: var(--bg);
               border: 1px solid var(--border); display: flex; align-items: center;
@@ -270,7 +270,7 @@
 
   /* ── toast ── */
   .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--text);
-           color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 14px;
+           color: #666565; padding: 10px 18px; border-radius: 8px; font-size: 14px;
            opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 999; }
   .toast.show { opacity: 1; }
 
@@ -554,32 +554,31 @@
       </div>
     </div>
 
-    <!-- add event (coach + promoter) -->
-    <div id="page-add-event" class="page">
-      <h1>Add event</h1>
-      <div class="form-group">
-  <label class="form-label">Venue</label>
-  <select id="ae-venue" onchange="handleVenueSelect()"></select>
-</div>
-<div id="new-venue-form" style="display:none;background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:.875rem">
-  <div style="font-size:12px;font-weight:500;margin-bottom:.75rem;color:var(--muted)">New venue details</div>
-  <div class="form-group">
-    <label class="form-label">Venue name</label>
-    <input id="nv-name" type="text" placeholder="e.g. City Sports Hall">
-  </div>
-  <div class="form-row">
-    <div class="form-group">
-      <label class="form-label">Address</label>
-      <input id="nv-addr" type="text" placeholder="123 Main St">
+<!-- add event (coach + promoter) -->
+<div id="page-add-event" class="page">
+  <h1>Add event</h1>
+  <div class="card" style="max-width:560px">
+    <div class="form-group"><label class="form-label">Event name</label>
+      <input id="ae-name" type="text" placeholder="e.g. Summer Showdown 2025"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Date</label>
+        <input id="ae-date" type="date"></div>
+      <div class="form-group"><label class="form-label">Time</label>
+        <input id="ae-time" type="time" value="19:00"></div>
     </div>
     <div class="form-group">
-      <label class="form-label">City</label>
-      <input id="nv-city" type="text" placeholder="Manchester">
+      <label class="form-label">Venue</label>
+      <select id="ae-venue" onchange="handleVenueSelect()"></select>
     </div>
-  </div>
-  <div class="form-group">
-    <label class="form-label">Capacity</label>
-    <input id="nv-cap" type="number" placeholder="500" min="1">
+    <div class="form-group"><label class="form-label">Sports featured</label>
+      <div class="checkbox-group">
+        <label><input type="checkbox" id="ae-kb" value="kickboxing"> Kickboxing</label>
+        <label><input type="checkbox" id="ae-mma" value="mma"> MMA</label>
+        <label><input type="checkbox" id="ae-box" value="boxing"> Boxing</label>
+      </div></div>
+    <div class="form-group"><label class="form-label">Description (optional)</label>
+      <textarea id="ae-desc" placeholder="Any additional details…"></textarea></div>
+    <button class="btn btn-primary" onclick="submitAddEvent()">Create event</button>
   </div>
 </div>
 
@@ -730,8 +729,6 @@
 
   <!-- auth screen placeholder — moved outside shell below -->
 
-</main>
-
 </div>
 
 <!-- ── auth screen (outside app-shell so it's always visible) ── -->
@@ -790,6 +787,33 @@
         </div>
       </div>
       <button class="btn btn-primary" style="width:100%" onclick="submitRegister()">Create account</button>
+    </div>
+  </div>
+</div>
+
+<!-- venue modal -->
+<div id="venue-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+     z-index:200;align-items:center;justify-content:center;padding:1rem">
+  <div style="background:var(--surface);border-radius:var(--radius);padding:1.75rem;
+              width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+      <div style="font-size:16px;font-weight:600">Add new venue</div>
+      <button onclick="closeVenueModal()" style="border:none;background:none;font-size:20px;
+              cursor:pointer;color:var(--muted);line-height:1">×</button>
+    </div>
+    <div class="form-group"><label class="form-label">Venue name</label>
+      <input id="nv-name" type="text" placeholder="e.g. City Sports Hall"></div>
+    <div class="form-group"><label class="form-label">Address</label>
+      <input id="nv-addr" type="text" placeholder="123 Main St"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">City</label>
+        <input id="nv-city" type="text" placeholder="Manchester"></div>
+      <div class="form-group"><label class="form-label">Capacity</label>
+        <input id="nv-cap" type="number" placeholder="500" min="1"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:.25rem">
+      <button class="btn btn-primary" onclick="saveNewVenue()">Save venue</button>
+      <button class="btn" onclick="closeVenueModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -1228,12 +1252,45 @@ function populateVenueSelect() {
     ? allVenues.map(v => `<option value="${v.id}">${v.name}, ${v.city}</option>`).join('')
       + '<option value="__new__">+ Add new venue...</option>'
     : '<option value="__new__">+ Add new venue...</option>';
-  handleVenueSelect();
 }
 
 function handleVenueSelect() {
-  const isNew = $('ae-venue').value === '__new__';
-  $('new-venue-form').style.display = isNew ? 'block' : 'none';
+  if ($('ae-venue').value === '__new__') {
+    //resets value back to first real venue or keeps __new__ if there isnt one
+    if (allVenues.length) $('ae-venue').value = String(allVenues[0].id);
+    openVenueModal();
+  }
+}
+
+function openVenueModal() {
+  const m = $('venue-modal');
+  m.style.display = 'flex';
+}
+
+function closeVenueModal(){
+  $('venue-modal').style.display = 'none';
+  $('nv-name').value = ''; $('nv-addr').value = '';
+  $('nv-city').value = ''; $('nv-cap').value  = '';
+}
+
+function saveNewVenue(){
+  const name = $('nv-name').value.trim();
+  const city = $('nv-city').value.trim();
+  if (!name || !city) {toast('Venue name and city are required'); return;}
+  const venue ={
+    id: Date.now(),
+    name,
+    address: $('nv-addr').value.trim(),
+    city,
+    capacity: parseInt($('nv-cap').value)||0,
+  }
+
+allVenues.push(venue);
+saveVenues();
+populateVenueSelect();
+$('ae-venue').value = String(venue.id);
+closeVenueModal();
+toast(`Venue "${venue.name}" added`);
 }
 
 function submitAddEvent() {
@@ -1241,46 +1298,26 @@ function submitAddEvent() {
   const date = $('ae-date').value;
   const time = $('ae-time').value;
   const vid  = parseInt($('ae-venue').value);
-  const sports = ['kickboxing','mma','boxing'].filter(s=>$('ae-'+s.slice(0,2)==='ki'?'ae-kb':s==='mma'?'ae-mma':'ae-box').checked);
-
-
-  // fix sport id mapping
   const sportIds = [];
   if ($('ae-kb').checked)  sportIds.push('kickboxing');
   if ($('ae-mma').checked) sportIds.push('mma');
   if ($('ae-box').checked) sportIds.push('boxing');
-  if (!name||!date||!vid||!sportIds.length) { toast('Please fill in all required fields'); return; }
-   // If new venue selected, create it first
-  if (venueEl.value === '__new__') {
-    const vname = $('nv-name').value.trim();
-    const vcity = $('nv-city').value.trim();
-    if (!vname || !vcity) { toast('Enter venue name and city'); return; }
-    const newVenue = {
-      id:       Date.now(),
-      name:     vname,
-      address:  $('nv-addr').value.trim(),
-      city:     vcity,
-      capacity: parseInt($('nv-cap').value) || 0,
-    };
-    allVenues.push(newVenue);
-    saveVenues();
-    vid = newVenue.id;
-    // Reset new venue fields
-    $('nv-name').value = ''; $('nv-addr').value = '';
-    $('nv-city').value = ''; $('nv-cap').value  = '';
+  if (!name || !date || !vid || !sportIds.length) {
+    toast('Please fill in all required fields'); return;
   }
   const newEvent = {
-    id: Date.now(), name, date, time: time||'12:00',
-    venueId: vid, sports: sportIds,
-    desc: $('ae-desc').value.trim(),
+    id:           Date.now(), name, date,
+    time:         time || '19:00', venueId: vid,
+    sports:       sportIds,
+    desc:         $('ae-desc').value.trim(),
     organiserRole: currentUser ? currentUser.role : 'unknown',
   };
-  
   allEvents.push(newEvent);
   saveEvents();
   toast(`Event "${name}" created`);
-  $('ae-name').value=''; $('ae-date').value=''; $('ae-desc').value='';
-  $('ae-kb').checked=$('ae-mma').checked=$('ae-box').checked=false;
+  $('ae-name').value = ''; $('ae-date').value = ''; $('ae-desc').value = '';
+  $('ae-kb').checked = $('ae-mma').checked = $('ae-box').checked = false;
+  populateVenueSelect();
   showPage('events'); renderEvents();
 }
 
