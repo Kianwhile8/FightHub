@@ -10,6 +10,8 @@ ratings are freshly computed from each fighteesr full record and fight history
 on every call. '''
 
 from __future__ import annotations
+from operator import is_
+from unittest import result
 
 # elo configurations
 
@@ -90,18 +92,86 @@ def _expected(rating_a: float, rating_b: float) -> float:
 
 
 
+def _build_context_multiplier(
+    result:         str,
+    method:         str,
+    fighter:        dict,
+    fighter_hist:   list[dict],
+    opponent:       dict,
+    opp_hist:       list[dict],
+    fight_date:     str,
+) -> float:
+    """
+   full elo multiplier by combining all bonsues and penalties on top of base 
+   method multiplier
+ 
+    Bonuses and penalties
+   
+    Win streak 
+        3+ consecutive wins before this fight: +0.4 scales up to 1.5 
+ 
+    Opponent was unbeaten for 3+ fights
+        Beating a fighter on a hot streak: +0.3
+        Losing to a fighter on a hot streak: no penalty (expected)
+ 
+    Experience gap
+        You beat someone with MORE total bouts: +0.2 
+        You beat someone with FEWER total bouts: -0.15 
+        You LOSE to someone with FEWER bouts: extra -0.2 
+ 
+    Win differential
+        You beat someone with MORE wins: +0.25
+        You beat someone with FEWER wins: -0.1
+        You LOSE to someone with FEWER wins: extra -0.15
+    """
+    is_win  = result.upper() == "W"
+    is_loss = result.upper() == "L"
+
+    mult = _method_multiplier (method) if is_win else 1.0
+
+    f_total = _total_bouts(fighter)
+    o_total = _total_bouts(opponent)
+    f_wins = fighter["wins"]
+    o_wins = opponent["wins"]
 
 
+    # win streak bonus based on time of fight
 
+    if is_win:
+        f_streak = _streak_at_date(fighter_hist, fight_date)
+        mult += _streak_multiplier(f_streak)
 
+    # experience gap bonus
+    if o_total > 0 and f_total > 0:
+        if is_win:
+            if o_total > f_total:
+                mult += 0.2
+            elif o_total < f_total:
+                mult = 0.15
+        elif is_loss:
+            if o_total < f_total:
+                mult -= 0.2
 
+    # unbeatan opponent for 3+ fights
 
+    if is_win:
+        opp_streak = _streak_at_date(opp_hist, fight_date)
+        if opp_streak >= 3:
+            mult += 0.3
+    
+    # win differential 
 
-
-
-
-
-
+    if is_win:
+        if o_wins >f_wins:
+            mult += 0.25
+        elif o_wins <f_wins:
+            mult -= 0.1
+    elif is_loss:
+        if o_wins < f_wins:
+            mult -=1.5
+    
+    #never return  negative bonus
+    return max (0.1, mult)
 
 
 def compute_elo(history: list[dict], all_elos:dict[str, float]| None = None) -> float:
@@ -144,6 +214,7 @@ def compute_elo_for_pool(
     fight results influence both fighters ratings'''
 
     name_to_id = {f["name"]: f["id"] for f in fighters}
+    id_to_fighter = {f["id"]: f for f in fighters}
 
     # collects all fights
 
