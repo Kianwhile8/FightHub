@@ -11,6 +11,7 @@ on every call. '''
 
 from __future__ import annotations
 from operator import is_
+from typing import List
 from unittest import result
 
 # elo configurations
@@ -261,6 +262,19 @@ def _method_prestige(method:str)-> float:
 
 # fighter profle usings scoring functions for stats
 
+def _current_streak(history: list[dict]) -> int:
+    '''current streak starting from most recent fight'''
+
+    streak = 0
+    for h in sorted(history, key=lambda h:h["date"], reverse = True):
+        if h ["result"] =="w":
+            streak+= 1
+        else:
+            break
+    return streak
+
+
+
 def _profile (fighter:dict, history:list[dict], elo:float) -> dict:
 
     '''computes all delvierable statistics for a fighter'''
@@ -292,6 +306,11 @@ def _profile (fighter:dict, history:list[dict], elo:float) -> dict:
     else:
         recent_form = 0.5
 
+    streak = _current_streak(history)
+
+    streak_score = min(streak/6.0, 1.0) if streak>= 3 else 0.0
+    form_factor = (recent_form * 0.6)+(streak_score *0.4)
+
     return {
         "total": total,
         "win_rate": wins/total,
@@ -299,6 +318,8 @@ def _profile (fighter:dict, history:list[dict], elo:float) -> dict:
         "finish_score": finish_score,
         "opp_quality_score": opp_quality_Score,
         "recent_form": recent_form,
+        "streak": streak,
+        "form_factor": form_factor,
         "age": fighter["age"],
         "weight_kg": fighter["weight_kg"]
     }
@@ -323,6 +344,10 @@ def _score_record (a:dict, b:dict) ->float:
     compliemtns ELO ensures that opponents are matched appropriately'''
 
     return 1.0 - abs(a["win_rate"] - b["win_rate"])
+
+def _score_form(a:dict, b:dict) ->float:
+    '''matches fighters based on their current form both on hot streak for example'''
+    return 1.0 - abs(a["form_factor"] - b["form_factor"])
 
 def _score_method (a:dict, b:dict) ->float:
     ''' beating a similarly scored profile scores higher'''
@@ -372,6 +397,7 @@ def match_score(
         _score_elo(a, b)          * elo_w          +
         _score_record(a, b)       * record_w       +
         _score_method(a, b)       * method_W      +
+        _score_form(a,b)          * form_w         +
         _score_opp_quality(a, b)  * opp_quality_w  +
         _score_experience(a, b)   * experience_w   +
         _score_recent_form(a, b)  * recent_form_w  +
