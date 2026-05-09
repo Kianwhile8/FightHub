@@ -8,51 +8,53 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:         #000000;
-    --surface:    #5e5c5c;
-    --border:     #e4e4e0;
-    --text:       #dbdbce;
-    --muted:      #6b6b67;
-    --success:    #15803d;
-    --success-bg: #dcfce7;
-    --danger:     #b91c1c;
-    --danger-bg:  #fee2e2;
-    --warn:       #92400e;
-    --warn-bg:    #fef3c7;
-    --info:       #1d4ed8;
-    --info-bg:    #dbeafe;
+    --bg:         #0a0a0a;
+    --surface:    #111111;
+    --border:     #222222;
+    --text:       #f0f0f0;
+    --muted:      #666666;
+    --success:    #34d399;
+    --success-bg: #052e16;
+    --danger:     #f87171;
+    --danger-bg:  #2d0000;
+    --warn:       #fbbf24;
+    --warn-bg:    #2d1500;
+    --info:       #a78bfa;
+    --info-bg:    #1a0a2e;
+    --accent:     #7c3aed;
+    --accent-light: #a78bfa;
     --radius:     10px;
-    --shadow:     0 1px 3px rgba(0,0,0,.08);
+    --shadow:     0 1px 4px rgba(0,0,0,.6);
   }
-
+ 
   body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg);
          color: var(--text); font-size: 15px; line-height: 1.5; }
-
+ 
   /* ── layout ── */
   .shell { display: flex; min-height: 100vh; }
-
+ 
   .sidebar {
-    width: 224px; flex-shrink: 0; background: var(--surface);
-    border-right: 1px solid var(--border); padding: 1.5rem 1rem;
+    width: 224px; flex-shrink: 0; background: #000000;
+    border-right: 1px solid #1e1e1e; padding: 1.5rem 1rem;
     display: flex; flex-direction: column; gap: .2rem;
     position: sticky; top: 0; height: 100vh; overflow-y: auto;
   }
   .sidebar-logo { font-size: 18px; font-weight: 600; padding: .5rem .75rem 1.25rem; letter-spacing: -.3px; }
-  .sidebar-logo span { color: var(--muted); font-weight: 400; }
-
+  .sidebar-logo span { color: #7c3aed; font-weight: 400; }
+ 
   .nav-section { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
-                 color: var(--muted); padding: .9rem .75rem .3rem; }
-
+                 color: #444444; padding: .9rem .75rem .3rem; }
+ 
   .nav-item {
     display: flex; align-items: center; gap: 10px; padding: .55rem .75rem;
     border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--muted);
     border: none; background: none; width: 100%; text-align: left;
     transition: background .12s, color .12s;
   }
-  .nav-item:hover  { background: var(--bg); color: var(--text); }
-  .nav-item.active { background: var(--text); color: #fff; }
+  .nav-item:hover  { background: #1a1a1a; color: #f0f0f0; }
+  .nav-item.active { background: var(--accent); color: #fff; }
   .nav-item .icon  { width: 16px; text-align: center; font-style: normal; flex-shrink: 0; }
-
+ 
   .role-section { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border); }
   .role-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
                 color: var(--muted); margin-bottom: .5rem; display: block; }
@@ -63,28 +65,28 @@
     color: var(--muted); transition: background .12s, color .12s; white-space: nowrap;
   }
   .role-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
-
+ 
   .main { flex: 1; padding: 2rem; max-width: 880px; }
   .page { display: none; }
   .page.active { display: block; }
-
+ 
   h1 { font-size: 22px; font-weight: 600; margin-bottom: 1.5rem; }
   h2 { font-size: 16px; font-weight: 600; margin-bottom: .75rem; }
-
+ 
   /* ── cards ── */
   .card {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
     box-shadow: var(--shadow);
   }
-
+ 
   /* ── stat grid ── */
   .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 1.5rem; }
-  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  .stat { background: #111111; border: 1px solid #222222; border-radius: var(--radius);
           padding: 1rem; text-align: center; box-shadow: var(--shadow); }
   .stat-val { font-size: 26px; font-weight: 600; }
   .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
+ 
   /* ── fighter rows ── */
   .fighter-row {
     display: flex; align-items: center; gap: 12px; padding: 10px 0;
@@ -100,14 +102,14 @@
   .fighter-meta { font-size: 12px; color: var(--muted); margin-top: 1px; }
   .fighter-info { flex: 1; min-width: 0; }
   .record-badge { font-size: 13px; font-weight: 600; color: var(--muted); }
-
+ 
   /* ── event cards ── */
   .event-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 1.25rem; margin-bottom: 10px; cursor: pointer; box-shadow: var(--shadow);
     transition: border-color .15s, box-shadow .15s;
   }
-  .event-card:hover { border-color: #494948; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .event-card:hover { border-color: #c0c0bc; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
   .event-card-header { display: flex; align-items: flex-start; gap: 14px; }
   .event-date-block {
     background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
@@ -122,27 +124,28 @@
     font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; white-space: nowrap;
   }
   .status-upcoming { background: var(--info-bg);    color: var(--info); }
-  .status-past     { background: #3c3d3d;            color: #6b7280; }
+  .status-past     { background: #f3f4f6;            color: #6b7280; }
   .status-today    { background: var(--success-bg);  color: var(--success); }
-
+ 
   /* ── event detail ── */
   .event-detail-banner {
-    background: var(--text); color: #616161; border-radius: var(--radius);
-    padding: 1.5rem; margin-bottom: 1rem;
+    background: #111111; color: #f0f0f0;
+    border-left: 4px solid #7c3aed;
+    border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1rem;
   }
-  .event-detail-banner h2 { color: #6e6d6d; margin-bottom: .25rem; font-size: 20px; }
+  .event-detail-banner h2 { color: #fff; margin-bottom: .25rem; font-size: 20px; }
   .event-detail-meta { font-size: 14px; opacity: .7; }
   .venue-block { display: flex; gap: 10px; align-items: flex-start; }
   .venue-icon  { font-size: 20px; flex-shrink: 0; margin-top: 2px; }
   .venue-name  { font-weight: 600; font-size: 15px; }
   .venue-addr  { font-size: 13px; color: var(--muted); margin-top: 2px; }
-
+ 
   /* ── badges ── */
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500; white-space: nowrap; }
-  .badge-kb  { background: #676768; color: #5b21b6; }
-  .badge-mma { background: #616060; color: #991b1b; }
+  .badge-kb  { background: #ede9fe; color: #5b21b6; }
+  .badge-mma { background: #fee2e2; color: #991b1b; }
   .badge-box { background: #d1fae5; color: #065f46; }
-
+ 
   /* ── forms ── */
   .form-group { margin-bottom: .875rem; }
   .form-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
@@ -151,25 +154,25 @@
     border-radius: 8px; font-size: 14px; background: var(--surface);
     color: var(--text); outline: none; transition: border-color .15s;
   }
-  input:focus, select:focus, textarea:focus { border-color: var(--text); }
+  input:focus, select:focus, textarea:focus { border-color: #7c3aed; }
   textarea { resize: vertical; min-height: 70px; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
   .checkbox-group { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 4px; }
   .checkbox-group label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
   .checkbox-group input[type=checkbox] { width: auto; }
-
+ 
   /* ── buttons ── */
   .btn { padding: 8px 18px; border: 1px solid var(--border); border-radius: 8px;
          background: none; cursor: pointer; font-size: 14px; color: var(--text);
          transition: background .12s; }
   .btn:hover { background: var(--bg); }
-  .btn-primary { background: var(--text); color: #fff; border-color: var(--text); }
-  .btn-primary:hover { opacity: .88; background: var(--text); }
+  .btn-primary { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+  .btn-primary:hover { opacity: .88; background: #7c3aed; }
   .btn-danger  { background: var(--danger-bg); color: var(--danger); border-color: #fca5a5; }
   .btn-sm { padding: 5px 12px; font-size: 13px; }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
-
+ 
   /* ── toolbar / chips ── */
   .toolbar { display: flex; gap: 10px; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
   .search-wrap { position: relative; flex: 1; min-width: 180px; }
@@ -180,8 +183,8 @@
   .chip { padding: 4px 12px; border: 1px solid var(--border); border-radius: 20px;
           font-size: 12px; cursor: pointer; color: var(--muted); background: none;
           transition: background .1s, color .1s; }
-  .chip.active { background: var(--text); color: #fff; border-color: var(--text); }
-
+  .chip.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+ 
   /* ── match cards ── */
   .match-card { display: flex; align-items: center; gap: 14px; padding: 12px 1.25rem;
                 border-bottom: 1px solid var(--border); }
@@ -194,7 +197,7 @@
   .score-high { background: var(--success-bg); color: var(--success); }
   .score-mid  { background: var(--warn-bg);    color: var(--warn); }
   .score-low  { background: #f3f4f6;           color: #6b7280; }
-
+ 
   /* ── history rows ── */
   .history-row { display: flex; align-items: center; gap: 12px; padding: 9px 0;
                  border-bottom: 1px solid var(--border); font-size: 13px; }
@@ -202,7 +205,7 @@
   .result-w { color: var(--success); font-weight: 700; width: 18px; }
   .result-l { color: var(--danger);  font-weight: 700; width: 18px; }
   .result-d { color: var(--muted);   font-weight: 700; width: 18px; }
-
+ 
   /* ── detail panels ── */
   .detail-header { display: flex; align-items: center; gap: 16px; margin-bottom: 1.25rem; }
   .detail-avatar { width: 56px; height: 56px; border-radius: 50%; background: #e8e8e4;
@@ -213,7 +216,7 @@
               color: var(--muted); cursor: pointer; margin-bottom: 1rem;
               border: none; background: none; padding: 0; }
   .back-btn:hover { color: var(--text); }
-
+ 
   /* ── rankings ── */
   .ranking-row {
     display: flex; align-items: center; gap: 14px; padding: 11px 0;
@@ -226,18 +229,18 @@
     font-size: 13px; font-weight: 600; color: var(--muted);
     width: 28px; text-align: center; flex-shrink: 0;
   }
-  .rank-num.gold   { color: #b45309; }
-  .rank-num.silver { color: #6b7280; }
-  .rank-num.bronze { color: #92400e; }
+  .rank-num.gold   { color: #fbbf24; }
+  .rank-num.silver { color: #888888; }
+  .rank-num.bronze { color: #c2410c; }
   .elo-pill {
     font-size: 12px; font-weight: 600; padding: 3px 10px;
     border-radius: 20px; white-space: nowrap; flex-shrink: 0;
   }
-  .elo-positive { background: var(--success-bg); color: var(--success); }
+  .elo-positive { background: #1a0a2e; color: #a78bfa; }
   .elo-negative { background: var(--danger-bg);  color: var(--danger); }
   .elo-neutral  { background: #f3f4f6;            color: #6b7280; }
-
-
+ 
+ 
   /* ── gym panel ── */
   .gym-card {
     background: var(--surface); border: 1px solid var(--border);
@@ -245,7 +248,7 @@
     cursor: pointer; box-shadow: var(--shadow);
     transition: border-color .15s, box-shadow .15s;
   }
-  .gym-card:hover { border-color: #505050; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  .gym-card:hover { border-color: #c0c0bc; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
   .gym-card-header { display: flex; align-items: center; gap: 12px; }
   .gym-icon { width: 42px; height: 42px; border-radius: 10px; background: var(--bg);
               border: 1px solid var(--border); display: flex; align-items: center;
@@ -255,7 +258,7 @@
     border-bottom: 1px solid var(--border); font-size: 13px;
   }
   .gym-fighter-row:last-child { border-bottom: none; }
-
+ 
   /* fight card */
   .bout-row {
     display: flex; align-items: center; gap: 12px; padding: 11px 0;
@@ -263,26 +266,26 @@
   }
   .bout-row:last-child { border-bottom: none; }
   .bout-fighter { flex: 1; font-weight: 500; }
-  .bout-vs { color: var(--muted); font-size: 12px; padding: 0 8px; flex-shrink: 0; }
+  .bout-vs { color: #ff0000; font-size: 12px; padding: 0 8px; flex-shrink: 0; }
   .bout-sport { flex-shrink: 0; }
   /* ── divider ── */
   .divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
-
+ 
   /* ── toast ── */
   .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--text);
-           color: #666565; padding: 10px 18px; border-radius: 8px; font-size: 14px;
+           color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 14px;
            opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 999; }
   .toast.show { opacity: 1; }
-
+ 
   .empty { text-align: center; color: var(--muted); padding: 3rem 0; font-size: 14px; }
-
+ 
   /* ── sidebar nav visibility by role ── */
   .sidebar .fighter-only,
   .sidebar .coach-only,
   .sidebar .promoter-only,
   .sidebar .mgmt-only,
   .sidebar .admin-only { display: none; }
-
+ 
   body.role-fighter  .sidebar .fighter-only  { display: flex; }
   body.role-coach    .sidebar .coach-only    { display: flex; }
   body.role-coach    .sidebar .mgmt-only     { display: flex; }
@@ -291,14 +294,14 @@
   body.role-admin    .sidebar .admin-only    { display: flex; }
   body.role-admin    .sidebar .mgmt-only     { display: flex; }
   body.role-admin    .sidebar .coach-only    { display: flex; }
-
+ 
   .sidebar .nav-section.fighter-only,
   .sidebar .nav-section.mgmt-only { display: none; }
   body.role-fighter  .sidebar .nav-section.fighter-only { display: block; }
   body.role-coach    .sidebar .nav-section.mgmt-only    { display: block; }
   body.role-promoter .sidebar .nav-section.mgmt-only    { display: block; }
   body.role-admin    .sidebar .nav-section.mgmt-only    { display: block; }
-
+ 
   @media (max-width: 640px) {
     .sidebar { width: 56px; padding: .75rem .5rem; }
     .sidebar-logo, .nav-item span, .role-section, .nav-section { display: none; }
