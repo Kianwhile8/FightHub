@@ -21,7 +21,7 @@ method_multiplier ={
     "tko": 1.5,
     "submission": 1.3,
     "decision": 1.0,
-    "disqualification": 0.5
+    "disqualification": 0.0
 }
 
 def _method_multiplier(method: str) -> float:
@@ -31,23 +31,78 @@ def _method_multiplier(method: str) -> float:
 #factor weights. must sum to 1.0
 
 weight_W = 0.20
-elo_w = 0.20
-record_w = 0.15
+elo_w = 0.18
+record_w = 0.12
+form_w = 0.12
 method_W = 0.10
 opp_quality_w = 0.10
 experience_w = 0.15
 recent_form_w = 0.05
-age_w = 0.05
+age_w = 0.03
 
-_weight_sum = weight_W + elo_w + record_w + method_W + opp_quality_w + \
+_weight_sum = weight_W + elo_w + record_w + form_w + method_W + opp_quality_w + \
     experience_w + recent_form_w + age_w
 assert abs(_weight_sum - 1.0) < 1e-9, \
     f"factor weights must sum to 1.0, got {_weight_sum}"
 
-# ELO engine creation
+# context helper used by the engine
+
+def _streak_at_date(history:List[dict], before_date:str) -> int:
+    '''returns a consecutive win streak for fighters before the given date.
+    awards opponent for beating a fighter on a win streak'''
+
+    past = [h for h in history if h["date"] < before_date]
+    past.sort(key=lambda h:h ["date"], reverse=True)
+    streak = 0
+    for h in past:
+        if h ["result"] == "w":
+            streak +=1
+        else:
+            break
+        return streak
+    
+def _streak_multiplier (streak: int) -> float:
+    '''adds a bonus multiplier for consecutive wins.
+    starts at 3 wins and scales up to a maximum multiplier of 1.5x '''
+
+    if streak <3:
+        return 0.0
+    return min(0.4 +(streak - 3) *0.2,1.5)
+    # +0.4x at 3 wins. +0.2 for each win after that point capped at 1.5
+
+def _total_bouts (fighter: dict) -> int:
+    return fighter["wins"] + fighter["losses"] + fighter["draws"]
+
+
+
+
+
+
+
+# elo engine 
+ 
+
+
 
 def _expected(rating_a: float, rating_b: float) -> float:
     return 1 / (1 + 10 ** ((rating_b - rating_a) / 400))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def compute_elo(history: list[dict], all_elos:dict[str, float]| None = None) -> float:
                 
@@ -127,7 +182,7 @@ method_prestige = {
     "tko": 0.9,
     "submission": 0.85,
     "decision": 0.5,
-    "disqualification": 0.3
+    "disqualification": 0.0
 }
 
 def _method_prestige(method:str)-> float:
