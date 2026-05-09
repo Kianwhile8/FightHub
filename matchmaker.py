@@ -27,9 +27,10 @@ method_multiplier ={
     "disqualification": 0.0
 }
 
-def _method_multiplier(method: str) -> float:
-    return method_multiplier.get(method.lower().strip(), 1.0)
-
+def _method_multiplier(method) -> float:
+    if not isinstance(method, str):
+        return 1.0
+    return method_multiplier.get(method.lower().strip(),1.0)
 
 #factor weights. must sum to 1.0
 
@@ -39,7 +40,7 @@ record_w = 0.12
 form_w = 0.12
 method_W = 0.10
 opp_quality_w = 0.10
-experience_w = 0.15
+experience_w = 0.10
 recent_form_w = 0.05
 age_w = 0.03
 
@@ -58,11 +59,11 @@ def _streak_at_date(history:List[dict], before_date:str) -> int:
     past.sort(key=lambda h:h ["date"], reverse=True)
     streak = 0
     for h in past:
-        if h ["result"] == "w":
+        if h ["result"] == "W":
             streak +=1
         else:
             break
-        return streak
+    return streak
     
 def _streak_multiplier (streak: int) -> float:
     '''adds a bonus multiplier for consecutive wins.
@@ -148,7 +149,7 @@ def _build_context_multiplier(
             if o_total > f_total:
                 mult += 0.2
             elif o_total < f_total:
-                mult = 0.15
+                mult -= 0.15
         elif is_loss:
             if o_total < f_total:
                 mult -= 0.2
@@ -169,7 +170,7 @@ def _build_context_multiplier(
             mult -= 0.1
     elif is_loss:
         if o_wins < f_wins:
-            mult -=1.5
+            mult -= 0.15
     
     #never return  negative bonus
     return max (0.1, mult)
@@ -224,27 +225,27 @@ def compute_elo_for_pool(
         for fight in histories.get(f["id"], []):
             all_fights.append({**fight, "_fighter_id": f["id"], "_fighter_name": f["name"]})
             # sorts all fights globally by date 
-        all_fights.sort(key=lambda h:h ["date"])
+    all_fights.sort(key=lambda h:h ["date"])
 
-        ratings : dict[int, float] = {f["id"]: float(elo_start) for f in fighters}
-        result_score = {"W": 1.0, "D": 0.5, "L": 0.0}
+    ratings : dict[int, float] = {f["id"]: float(elo_start) for f in fighters}
+    result_score = {"W": 1.0, "D": 0.5, "L": 0.0}
 
-        for fight in all_fights:
-            fid = fight["_fighter_id"]
-            opp_name = fight["opponent"]
-            opp_id = name_to_id.get(opp_name)  # none if opponent not in pool
-            r_fighter = ratings[fid]
-            r_opp = ratings[opp_id] if opp_id else float(elo_start)
+    for fight in all_fights:
+        fid = fight["_fighter_id"]
+        opp_name = fight["opponent"]
+        opp_id = name_to_id.get(opp_name)  # none if opponent not in pool
+        r_fighter = ratings[fid]
+        r_opp = ratings[opp_id] if opp_id else float(elo_start)
 
-            actual = result_score.get(fight["result"].upper(), 0.5)
-            expected = _expected (r_fighter, r_opp)
-            multiplier = _method_multiplier(fight["method"] if actual == 1.0 else 1.0)
+        actual = result_score.get(fight["result"].upper(), 0.5)
+        expected = _expected (r_fighter, r_opp)
+        multiplier = _method_multiplier(fight["method"]) if actual == 1.0 else 1.0
 
-            change = elo_k * multiplier * (actual - expected)
-            ratings[fid] += change
-            if opp_id:
-                ratings[opp_id] -= change  # mirros change to the opponent 
-        return {fid: round (r,2) for fid, r in ratings.items()}
+        change = elo_k * multiplier * (actual - expected)
+        ratings[fid] += change
+        if opp_id:
+            ratings[opp_id] -= change  # mirros change to the opponent 
+    return {fid: round (r,2) for fid, r in ratings.items()}
         
 # victory profle method
 
@@ -284,7 +285,7 @@ def _profile (fighter:dict, history:list[dict], elo:float) -> dict:
     draws = fighter["draws"]
     total = wins +losses + draws or 1
 
-    win_fights = [h for h in history if h ["result"] == "w"]
+    win_fights = [h for h in history if h ["result"] == "W"]
     finish_score = sum(_method_prestige(h["method"]) for h in win_fights)/len (win_fights) if win_fights else 0.5
     
     if win_fights:

@@ -174,6 +174,7 @@ class FighterDB:
         if result not in ("W", "L", "D"):
             raise ValueError("result must be 'W', 'L', or 'D'")
         fight_date = fight_date or str(_date.today())
+        method = str(method) if method else "decision"
         cur = self._conn.cursor()
         cur.execute("""
             INSERT INTO fight_history (fighter_id, opponent_name, result, method, date)
