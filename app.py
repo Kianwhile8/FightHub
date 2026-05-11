@@ -45,8 +45,6 @@ def _coach_owns_fighter(sport:str,fighter_id:int, user:dict) -> bool:
 
     if user["role"] == "admin":
         return True
-    if user["role"] == "coach":
-        return False
     with get_db(sport) as db:
         fighter = db.get_fighter(fighter_id)
     if not fighter or not fighter.get("gym_id"):

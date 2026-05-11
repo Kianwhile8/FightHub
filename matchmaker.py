@@ -238,14 +238,26 @@ def compute_elo_for_pool(
         r_opp = ratings[opp_id] if opp_id else float(elo_start)
 
         actual = result_score.get(fight["result"].upper(), 0.5)
-        expected = _expected (r_fighter, r_opp)
-        multiplier = _method_multiplier(fight["method"]) if actual == 1.0 else 1.0
+        expected = _expected(r_fighter, r_opp)
+
+        if opp_id:
+            multiplier = _build_context_multiplier(
+                result=fight["result"],
+                method=fight["method"],
+                fighter=id_to_fighter[fid],
+                fighter_hist=histories.get(fid, []),
+                opponent=id_to_fighter[opp_id],
+                opp_hist=histories.get(opp_id, []),
+                fight_date=fight["date"],
+            )
+        else:
+            multiplier = _method_multiplier(fight["method"]) if actual == 1.0 else 1.0
 
         change = elo_k * multiplier * (actual - expected)
         ratings[fid] += change
         if opp_id:
-            ratings[opp_id] -= change  # mirros change to the opponent 
-    return {fid: round (r,2) for fid, r in ratings.items()}
+            ratings[opp_id] -= change
+    return {fid: round(r, 2) for fid, r in ratings.items()}
         
 # victory profle method
 

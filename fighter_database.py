@@ -93,7 +93,7 @@ class FighterDB:
     def get_fighter(self, fighter_id: int) -> dict | None:
         cur = self._conn.cursor()
         cur.execute("""
-            SELECT f.id, f.name, f.age, f.weight, r.wins, r.losses, r.draws
+            SELECT f.id, f.name, f.age, f.weight, r.wins, r.losses, r.draws, f.gym_id
             FROM fighters f JOIN records r ON r.fighter_id = f.id
             WHERE f.id = ?
         """, (fighter_id,))
@@ -103,7 +103,7 @@ class FighterDB:
     def get_all_fighters(self) -> list[dict]:
         cur = self._conn.cursor()
         cur.execute("""
-            SELECT f.id, f.name, f.age, f.weight, r.wins, r.losses, r.draws
+            SELECT f.id, f.name, f.age, f.weight, r.wins, r.losses, r.draws, f.gym_id
             FROM fighters f JOIN records r ON r.fighter_id = f.id
             ORDER BY f.name
         """)
@@ -112,7 +112,7 @@ class FighterDB:
     def search_fighters(self, query: str) -> list[dict]:
         cur = self._conn.cursor()
         cur.execute("""
-            SELECT f.id, f.name, f.age, f.weight, r.wins, r.losses, r.draws
+            SELECT f.id, f.name, f.age, f.weight, r.wins, r.losses, r.draws, f.gym_id
             FROM fighters f JOIN records r ON r.fighter_id = f.id
             WHERE LOWER(f.name) LIKE LOWER(?)
             ORDER BY f.name
