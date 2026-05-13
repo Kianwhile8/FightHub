@@ -61,6 +61,17 @@ class FighterDB:
                 date          TEXT    NOT NULL,
                 FOREIGN KEY (fighter_id) REFERENCES fighters(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS event_bouts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id    INTEGER NOT NULL,
+                sport       TEXT    NOT NULL,
+                fighter_a_id INTEGER NOT NULL,
+                fighter_b_id INTEGER NOT NULL,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (fighter_a_id) REFERENCES fighters(id) ON DELETE CASCADE,
+                FOREIGN KEY (fighter_b_id) REFERENCES fighters(id) ON DELETE CASCADE
+            );
         """)
         self._conn.commit()
 
@@ -307,7 +318,7 @@ class FighterDB:
                 fb.id, fb.name, fb.weight,
                 b.created_at
             FROM event_bouts b
-            JOIN fighters fa on fa.id = b.fighter_b_id
+            JOIN fighters fa on fa.id = b.fighter_a_id
             JOIN fighters fb ON fb.id = b.fighter_b_id
             WHERE b.event_id =?
             ORDER by b.created_at""",(str(event_id),))

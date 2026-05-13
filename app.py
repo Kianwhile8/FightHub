@@ -70,6 +70,10 @@ def current_user() -> dict |None:
     uid = session.get("user_id")
     if not uid:
         return None
+    try:
+        uid = int(uid)
+    except (TypeError, ValueError):
+        return None
     return auth_db.get_by_id(uid)
 
 # adding auth decorators
