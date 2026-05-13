@@ -239,6 +239,12 @@
   .elo-positive { background: #1a0a2e; color: #a78bfa; }
   .elo-negative { background: var(--danger-bg);  color: var(--danger); }
   .elo-neutral  { background: #f3f4f6;            color: #6b7280; }
+  .band-pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+  .band-amateur   { background: #f3f4f6; color: #6b7280; }
+  .band-prospect  { background: #dbeafe; color: #1d4ed8; }
+  .band-contender { background: #d1fae5; color: #065f46; }
+  .band-regional  { background: #fef3c7; color: #92400e; }
+  .band-elite     { background: #ede9fe; color: #5b21b6; }
  
  
   /* ── gym panel ── */
@@ -876,6 +882,11 @@ const initials = name => name.trim().split(' ').map(w=>w[0]).join('').slice(0,2)
 function sportBadge(sport) {
   const cls = {kickboxing:'badge-kb', mma:'badge-mma', boxing:'badge-box'}[sport]||'';
   return `<span class="badge ${cls}">${sport}</span>`;
+}
+
+function bandPill(band) {
+  const cls = (band||'Amateur').toLowerCase().replace(/\s+/g,'-');
+  return `<span class="band-pill band-${cls}">${band||'Amateur'}</span>`;
 }
 
 function toast(msg, dur=2400) {
@@ -1588,6 +1599,7 @@ async function renderRankings() {
           <div class="fighter-name">${f.name}</div>
           <div class="fighter-meta">${f.wins}W · ${f.losses}L · ${f.draws}D · ${total} fights</div>
         </div>
+        ${bandPill(f.elo_band)}
         <span class="elo-pill ${eloCls}">${eloStr}</span>
       </div>`;
     }).join('');
@@ -1799,7 +1811,8 @@ async function openGymDetail(gymId) {
               <div style="font-weight:500">${f.name} ${sportBadge(f.sport)}</div>
               <div style="font-size:12px;color:var(--muted)">${f.wins}W · ${f.losses}L · ${f.draws}D · ${f.weight_kg}kg${isCoachOrAdmin ? ` · ID: ${f.id}` : ''}</div>
             </div>
-            <span class="elo-pill ${eloCls}" style="margin-right:8px">${eloStr}</span>
+            ${bandPill(f.elo_band)}
+            <span class="elo-pill ${eloCls}" style="margin-left:6px;margin-right:8px">${eloStr}</span>
             <button class="btn btn-sm btn-danger" onclick="removeFromGym(${f.id},'${f.sport}')" style="padding:4px 10px">✕</button>
           </div>`;
         }).join('') : '<div class="empty" style="padding:1.5rem">No fighters assigned yet.</div>'}

@@ -17,7 +17,15 @@ from unittest import result
 # elo configurations
 
 elo_start = 0
-elo_k = 32
+elo_min   = -50
+elo_k     = 32
+
+ELO_BAND_NAMES = ["Amateur", "Prospect", "Contender", "Regional", "Elite"]
+
+def elo_band(elo: float) -> str:
+    '''bands run in 200-point increments from 0. below 200 (including the -50 floor) is Amateur.'''
+    idx = max(0, int(elo // 200))
+    return ELO_BAND_NAMES[min(idx, len(ELO_BAND_NAMES) - 1)]
 
 method_multiplier ={
     "ko": 1.5,
@@ -199,9 +207,9 @@ def compute_elo(history: list[dict], all_elos:dict[str, float]| None = None) -> 
         multiplier = _method_multiplier(fight["method"]) if actual == 1.0 else 1.0
 
         change = elo_k *multiplier * (actual - expected)
-        rating += change
+        rating = max(rating + change, elo_min)
 
-        all_elos[opp_name] = opp_rating - change
+        all_elos[opp_name] = max(opp_rating - change, elo_min)
 
     return round(rating, 2)
 
@@ -254,9 +262,9 @@ def compute_elo_for_pool(
             multiplier = _method_multiplier(fight["method"]) if actual == 1.0 else 1.0
 
         change = elo_k * multiplier * (actual - expected)
-        ratings[fid] += change
+        ratings[fid] = max(ratings[fid] + change, elo_min)
         if opp_id:
-            ratings[opp_id] -= change
+            ratings[opp_id] = max(ratings[opp_id] - change, elo_min)
     return {fid: round(r, 2) for fid, r in ratings.items()}
         
 # victory profle method

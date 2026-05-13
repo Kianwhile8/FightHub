@@ -400,17 +400,17 @@ def get_rankings(sport):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     try:
-        from matchmaker import compute_elo_for_pool
+        from matchmaker import compute_elo_for_pool, elo_band
         with get_db(sport) as db:
             fighters = db.get_all_fighters()
             histories = {f["id"]: db.get_fight_history(f["id"]) for f in fighters}
 
             if not fighters:
                 return jsonify({"sport": sport, "rankings": []})
-            
+
             elo_ratings = compute_elo_for_pool(fighters, histories)
             ranked = sorted(
-                [{**f, "elo": elo_ratings[f["id"]]} for f in fighters],
+                [{**f, "elo": elo_ratings[f["id"]], "elo_band": elo_band(elo_ratings[f["id"]])} for f in fighters],
                     key=lambda x: x["elo"], reverse=True
             )
 
@@ -508,7 +508,7 @@ def gym_fighters(gym_id):
     gym = auth_db.get_gym(gym_id)
     if not gym:
         return err("gym not found", 404)
-    from matchmaker import compute_elo_for_pool
+    from matchmaker import compute_elo_for_pool, elo_band
     results =[]
     for sport in VALID_SPORTS:
         with get_db(sport) as db:
@@ -518,8 +518,9 @@ def gym_fighters(gym_id):
                 all_histories = {f["id"]:db.get_fight_history(f["id"]) for f in all_fighters}
                 elo_ratings = compute_elo_for_pool(all_fighters, all_histories)
                 for f in fighters:
+                    e = elo_ratings.get(f["id"], 0.0)
                     results.append({**f, "sport": sport,
-                                    "elo": elo_ratings.get(f["id"],0.0)})
+                                    "elo": e, "elo_band": elo_band(e)})
     return jsonify({"gym": gym, "fighters": results})
 
 @app.route("/api/gyms/<int:gym_id>/fighters/<int:fighter_id>", methods=["POST"])
