@@ -1353,7 +1353,10 @@ async function openFighterDetail(id, sport) {
   ]);
   const total   = fighter.wins+fighter.losses+fighter.draws||1;
   const winRate = Math.round(fighter.wins/total*100);
-  const isCoach = currentUser && ['coach','admin'].includes(currentUser.role);
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  const isCoach = currentUser && currentUser.role === 'coach';
+  // Coaches can only edit/log fights for fighters assigned to a gym
+  const canEdit = isAdmin || (isCoach && fighter.gym_id);
 
   $('fighter-detail-content').innerHTML = `
     <div class="detail-header">
@@ -1369,7 +1372,7 @@ async function openFighterDetail(id, sport) {
       <div class="stat"><div class="stat-val">${fighter.draws}</div><div class="stat-lbl">Draws</div></div>
       <div class="stat"><div class="stat-val">${winRate}%</div><div class="stat-lbl">Win rate</div></div>
     </div>
-    ${isCoach ? `<div class="btn-row">
+    ${canEdit ? `<div class="btn-row">
       <button class="btn btn-sm btn-primary" onclick="goLogFight()">+ Log fight</button>
       <button class="btn btn-sm btn-danger"  onclick="confirmDelete(${fighter.id},'${sport}')">Delete fighter</button>
     </div>` : ''}
@@ -1464,38 +1467,43 @@ function renderHistory() {
     :'<div class="empty" style="padding:2rem">No fights logged yet.</div>';
 }
 
-// ── profile 
+// ── profile
 function renderProfile() {
   const el = $('profile-content');
-  // Use the linked fighter record from the logged-in user if available
   const linked = currentUser && currentUser.fighter_record;
   const sport  = currentUser && currentUser.fighter_sport;
-  const f = linked || allFighters.find(f=>f.sport==='kickboxing') || allFighters[0];
-  if (!f) { el.innerHTML='<div class="empty">No fighter record linked to your account.<br>Ask your coach to add you to the system.</div>'; return; }
+
+  if (!linked) {
+    el.innerHTML = `
+      <div class="card" style="text-align:center;padding:2rem 1.5rem">
+        <div style="font-weight:600;font-size:16px;margin-bottom:.5rem">No fighter record linked</div>
+        <div style="font-size:13px;color:var(--muted)">Ask your coach for your Fighter ID, then use the form below to link your account.</div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <h2 style="font-size:14px;margin-bottom:.75rem">Link your fighter record</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Sport</label>
+            <select id="link-sport">
+              <option value="kickboxing">Kickboxing</option>
+              <option value="mma">MMA</option>
+              <option value="boxing">Boxing</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fighter ID</label>
+            <input id="link-fid" type="number" placeholder="e.g. 3">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="linkFighterRecord()">Link record</button>
+      </div>`;
+    return;
+  }
+
+  const f = linked;
   const displaySport = sport || f.sport || 'kickboxing';
   const total   = f.wins+f.losses+f.draws||1;
   const winRate = Math.round(f.wins/total*100);
-
-  // Link fighter form shown if no record linked yet
-  const linkForm = (!linked && currentUser && currentUser.role==='fighter') ? `
-    <div class="card" style="margin-top:1rem">
-      <h2 style="font-size:14px;margin-bottom:.75rem">Link your fighter record</h2>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Sport</label>
-          <select id="link-sport">
-            <option value="kickboxing">Kickboxing</option>
-            <option value="mma">MMA</option>
-            <option value="boxing">Boxing</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Fighter ID</label>
-          <input id="link-fid" type="number" placeholder="e.g. 3">
-        </div>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="linkFighterRecord()">Link record</button>
-    </div>` : '';
 
   el.innerHTML = `
     <div class="card">
@@ -1512,7 +1520,7 @@ function renderProfile() {
         <div class="stat"><div class="stat-val">${f.draws}</div><div class="stat-lbl">Draws</div></div>
         <div class="stat"><div class="stat-val">${winRate}%</div><div class="stat-lbl">Win rate</div></div>
       </div>
-    </div>${linkForm}`;
+    </div>`;
 }
 
 async function linkFighterRecord() {
@@ -1764,6 +1772,7 @@ async function openGymDetail(gymId) {
   try {
     const data = await apiFetch(`/api/gyms/${gymId}/fighters`);
     const gym  = data.gym;
+    const isCoachOrAdmin = currentUser && ['coach','admin'].includes(currentUser.role);
     el.innerHTML = `
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:1.5rem">
         <div class="gym-icon" style="width:52px;height:52px;font-size:24px">⌖</div>
@@ -1788,7 +1797,7 @@ async function openGymDetail(gymId) {
             <div class="avatar" style="cursor:pointer" onclick="openFighterDetail(${f.id},'${f.sport}')">${initials(f.name)}</div>
             <div style="flex:1;cursor:pointer" onclick="openFighterDetail(${f.id},'${f.sport}')">
               <div style="font-weight:500">${f.name} ${sportBadge(f.sport)}</div>
-              <div style="font-size:12px;color:var(--muted)">${f.wins}W · ${f.losses}L · ${f.draws}D · ${f.weight_kg}kg</div>
+              <div style="font-size:12px;color:var(--muted)">${f.wins}W · ${f.losses}L · ${f.draws}D · ${f.weight_kg}kg${isCoachOrAdmin ? ` · ID: ${f.id}` : ''}</div>
             </div>
             <span class="elo-pill ${eloCls}" style="margin-right:8px">${eloStr}</span>
             <button class="btn btn-sm btn-danger" onclick="removeFromGym(${f.id},'${f.sport}')" style="padding:4px 10px">✕</button>

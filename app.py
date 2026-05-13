@@ -48,8 +48,8 @@ def _coach_owns_fighter(sport:str,fighter_id:int, user:dict) -> bool:
     with get_db(sport) as db:
         fighter = db.get_fighter(fighter_id)
     if not fighter or not fighter.get("gym_id"):
-        #fighter not in any gym 
-        return True
+        # unassigned fighters can only be managed by admin
+        return False
     gym = auth_db.get_gym (fighter["gym_id"])
     return gym is not None and gym["coach_id"] == user["id"]
 
@@ -290,6 +290,9 @@ def add_fighter(sport):
 def update_fighter(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
+    user = current_user()
+    if user["role"] == "coach" and not _coach_owns_fighter(sport, fighter_id, user):
+        return err("You can only edit fighters in your own gym", 403)
     data = request.get_json(silent=True) or {}
     try:
         with get_db(sport) as db:
@@ -310,6 +313,9 @@ def update_fighter(sport, fighter_id):
 def delete_fighter(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
+    user = current_user()
+    if user["role"] == "coach" and not _coach_owns_fighter(sport, fighter_id, user):
+        return err("You can only delete fighters in your own gym", 403)
     try:
         with get_db(sport) as db:
             db.delete_fighter(fighter_id)
@@ -336,6 +342,16 @@ def get_fighter_fights(sport, fighter_id):
 def add_fight(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
+    user = current_user()
+    if user["role"] != "admin":
+        with get_db(sport) as db:
+            chk = db.get_fighter(fighter_id)
+        if not chk:
+            return err("Fighter not found", 404)
+        if not chk.get("gym_id"):
+            return err("Only admins can log fights for unassigned fighters", 403)
+        if user["role"] == "coach" and not _coach_owns_fighter(sport, fighter_id, user):
+            return err("You can only log fights for fighters in your own gym", 403)
     data, error = require_json("opponent_name", "result")
     if error:
         return error
