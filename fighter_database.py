@@ -291,8 +291,8 @@ class FighterDB:
         cur.execute("""
                     INSERT INTO event_bouts (event_id,sport, fighter_a_id, fighter_b_id, created_at)
                     VALUES (?,?,?,?,?)
-                    """, (str(event_id), self.sport, fighter_a_id, fighter_b_id, _dt.now().isoformat))
-        self.__conn.commit()
+                    """, (str(event_id), self.sport, fighter_a_id, fighter_b_id, _dt.now().isoformat()))
+        self._conn.commit()
         return self.get_bout(cur.lastrowid)
     
     def get_bout(self,bout_id:int) -> dict | None:

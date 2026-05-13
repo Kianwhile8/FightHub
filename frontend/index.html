@@ -839,12 +839,12 @@ let activeFighter = null;
 let activeEvent   = null;
 
 // ── local storage for events/venues 
-function saveEvents() { try { sessionStorage.setItem('fdb_events', JSON.stringify(allEvents)); } catch(e){} }
-function saveVenues() { try { sessionStorage.setItem('fdb_venues', JSON.stringify(allVenues)); } catch(e){} }
+function saveEvents() { try { localStorage.setItem('fdb_events', JSON.stringify(allEvents)); } catch(e){} }
+function saveVenues() { try { localStorage.setItem('fdb_venues', JSON.stringify(allVenues)); } catch(e){} }
 function loadLocalData() {
   try {
-    const ev = sessionStorage.getItem('fdb_events');
-    const ve = sessionStorage.getItem('fdb_venues');
+    const ev = localStorage.getItem('fdb_events');
+    const ve = localStorage.getItem('fdb_venues');
     if (ev) allEvents = JSON.parse(ev);
     if (ve) allVenues = JSON.parse(ve);
   } catch(e) {}
@@ -1235,6 +1235,11 @@ async function deleteBout(eventId, boutId) {
 
 function showAddBoutForm(eventId) {
   activeEvent = eventId;
+  const ev = allEvents.find(e => String(e.id) === String(eventId));
+  const sports = (ev && ev.sports && ev.sports.length) ? ev.sports : ['kickboxing', 'mma', 'boxing'];
+  const sportSel = $('bout-sport');
+  sportSel.innerHTML = sports.map(s => `<option value="${s}">${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('');
+  sportSel.closest('.form-group').style.display = sports.length === 1 ? 'none' : '';
   showPage('add-bout');
   loadBoutFighters();
 }
