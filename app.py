@@ -148,7 +148,7 @@ def login():
                 user["fighter_record"] = None
         return jsonify({"user": user})
     except ValueError as e:
-        return err(str(e)),401
+        return err(str(e), 401)
 
 
 @app.route("/api/auth/logout", methods=["POST"])
