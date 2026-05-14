@@ -72,6 +72,15 @@ class FighterDB:
                 FOREIGN KEY (fighter_a_id) REFERENCES fighters(id) ON DELETE CASCADE,
                 FOREIGN KEY (fighter_b_id) REFERENCES fighters(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS event_registrations (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id      TEXT    NOT NULL,
+                fighter_id    INTEGER NOT NULL,
+                registered_at TEXT    NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (fighter_id) REFERENCES fighters(id) ON DELETE CASCADE,
+                UNIQUE (event_id, fighter_id)
+            );
         """)
         self._conn.commit()
 
@@ -284,16 +293,29 @@ class FighterDB:
         from datetime import datetime as _dt
 
         cur = self._conn.cursor()
-        #validation that both fighters exist
         for fid in (fighter_a_id, fighter_b_id):
             if not self.get_fighter(fid):
                 raise ValueError(f"Fighter {fid} not found.")
         cur.execute("""
+            SELECT id FROM event_bouts
+            WHERE event_id = ?
+            AND ((fighter_a_id = ? AND fighter_b_id = ?)
+              OR (fighter_a_id = ? AND fighter_b_id = ?))
+        """, (str(event_id), fighter_a_id, fighter_b_id, fighter_b_id, fighter_a_id))
+        if cur.fetchone():
+            raise ValueError("This matchup already exists on the event card.")
+        cur.execute("""
                     INSERT INTO event_bouts (event_id,sport, fighter_a_id, fighter_b_id, created_at)
                     VALUES (?,?,?,?,?)
                     """, (str(event_id), self.sport, fighter_a_id, fighter_b_id, _dt.now().isoformat()))
+        bout_id = cur.lastrowid
+        # clear any pending registrations for both fighters at this event
+        cur.execute(
+            "DELETE FROM event_registrations WHERE event_id=? AND fighter_id IN (?,?)",
+            (str(event_id), fighter_a_id, fighter_b_id)
+        )
         self._conn.commit()
-        return self.get_bout(cur.lastrowid)
+        return self.get_bout(bout_id)
     
     def get_bout(self,bout_id:int) -> dict | None:
         cur = self._conn.cursor()
@@ -329,8 +351,66 @@ class FighterDB:
         cur.execute ("DELETE FROM event_bouts WHERE id =?", (bout_id,))
         if cur.rowcount == 0:
             raise ValueError (f"bout {bout_id} not found")
-        self._conn.commit
-    
+        self._conn.commit()
+
+    # event registrations (pending fighters)
+
+    def register_fighter_for_event(self, event_id: str, fighter_id: int) -> dict:
+        from datetime import datetime as _dt
+        if not self.get_fighter(fighter_id):
+            raise ValueError(f"Fighter {fighter_id} not found.")
+        cur = self._conn.cursor()
+        cur.execute(
+            "SELECT id FROM event_registrations WHERE event_id=? AND fighter_id=?",
+            (str(event_id), fighter_id)
+        )
+        if cur.fetchone():
+            raise ValueError("This fighter is already registered for this event.")
+        cur.execute(
+            "INSERT INTO event_registrations (event_id, fighter_id, registered_at) VALUES (?,?,?)",
+            (str(event_id), fighter_id, _dt.now().isoformat())
+        )
+        self._conn.commit()
+        return self.get_registration(cur.lastrowid)
+
+    def get_registration(self, reg_id: int) -> dict | None:
+        cur = self._conn.cursor()
+        cur.execute("""
+            SELECT r.id, r.event_id, f.id, f.name, f.weight, r.registered_at
+            FROM event_registrations r
+            JOIN fighters f ON f.id = r.fighter_id
+            WHERE r.id = ?
+        """, (reg_id,))
+        row = cur.fetchone()
+        return self._reg_row(row, self.sport) if row else None
+
+    def get_event_registrations(self, event_id: str) -> list[dict]:
+        cur = self._conn.cursor()
+        cur.execute("""
+            SELECT r.id, r.event_id, f.id, f.name, f.weight, r.registered_at
+            FROM event_registrations r
+            JOIN fighters f ON f.id = r.fighter_id
+            WHERE r.event_id = ?
+            ORDER BY r.registered_at
+        """, (str(event_id),))
+        return [self._reg_row(row, self.sport) for row in cur.fetchall()]
+
+    def remove_registration(self, reg_id: int) -> None:
+        cur = self._conn.cursor()
+        cur.execute("DELETE FROM event_registrations WHERE id=?", (reg_id,))
+        if cur.rowcount == 0:
+            raise ValueError(f"Registration {reg_id} not found.")
+        self._conn.commit()
+
+    @staticmethod
+    def _reg_row(row, sport: str) -> dict:
+        return {
+            "id":            row[0],
+            "event_id":      row[1],
+            "sport":         sport,
+            "fighter":       {"id": row[2], "name": row[3], "weight_kg": row[4]},
+            "registered_at": row[5],
+        }
 
     @staticmethod
     def _bout_row(row) -> dict | None:
@@ -340,12 +420,8 @@ class FighterDB:
             "id": row[0],
             "event_id": row[1],
             "sport": row[2],
-            "fighter_a_id": row[3],
-            "fighter_a_name": row[4],
-            "fighter_a_weight_kg": row[5],
-            "fighter_b_id": row[6],
-            "fighter_b_name": row[7],
-            "fighter_b_weight_kg": row[8],
+            "fighter_a": {"id": row[3], "name": row[4], "weight_kg": row[5]},
+            "fighter_b": {"id": row[6], "name": row[7], "weight_kg": row[8]},
             "created_at": row[9]
         }
 

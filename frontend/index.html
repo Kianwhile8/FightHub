@@ -696,6 +696,28 @@
       </div>
     </div>
 
+    <!-- register fighter for event (coach flow) -->
+    <div id="page-register-fighter" class="page">
+      <button class="back-btn" onclick="goBack()">← Back to event</button>
+      <h1>Register fighter for event</h1>
+      <div class="card" style="max-width:480px">
+        <div class="form-group">
+          <label class="form-label">Sport</label>
+          <select id="reg-sport" onchange="loadRegFighters()">
+            <option value="kickboxing">Kickboxing</option>
+            <option value="mma">MMA</option>
+            <option value="boxing">Boxing</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Your fighter</label>
+          <select id="reg-fighter"></select>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:1rem">Your fighter will appear as available for a bout at this event. A promoter or admin can then pair them with an opponent.</p>
+        <button class="btn btn-primary" onclick="submitRegisterFighter()">Register for event</button>
+      </div>
+    </div>
+
     <!-- fighter detail -->
     <div id="page-fighter-detail" class="page">
       <button class="back-btn" onclick="goBack()">← Back</button>
@@ -1180,12 +1202,17 @@ async function openEventDetail(id) {
   const d      = new Date(e.date);
   const dateStr= d.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const isMgmt = currentUser && ['coach','promoter','admin'].includes(currentUser.role);
+  const isCoach = currentUser && currentUser.role === 'coach';
 
-  // Load fight card from API
-  let bouts = [];
+  // Load fight card and pending registrations in parallel
+  let bouts = [], regs = [];
   try {
-    const boutData = await apiFetch(`/api/events/${e.id}/bouts`);
+    const [boutData, regData] = await Promise.all([
+      apiFetch(`/api/events/${e.id}/bouts`),
+      isMgmt ? apiFetch(`/api/events/${e.id}/registrations`) : Promise.resolve({registrations:[]})
+    ]);
     bouts = boutData.bouts || [];
+    regs  = regData.registrations || [];
   } catch(_) {}
 
   const boutRows = bouts.length
@@ -1198,6 +1225,17 @@ async function openEventDetail(id) {
           ${isMgmt ? `<button class="btn btn-sm btn-danger" onclick="deleteBout('${e.id}',${b.id})" style="padding:3px 8px">✕</button>` : ''}
         </div>`).join('')
     : '<div class="empty" style="padding:1.5rem">No bouts added yet.</div>';
+
+  const pendingRows = regs.length
+    ? regs.map(r => `
+        <div class="bout-row">
+          <div class="bout-fighter">${r.fighter.name} <span style="font-size:12px;color:var(--muted)">${r.fighter.weight_kg}kg</span></div>
+          <div class="bout-sport">${sportBadge(r.sport)}</div>
+          <span style="font-size:12px;color:var(--muted);flex:1">awaiting opponent</span>
+          ${!isCoach ? `<button class="btn btn-sm" onclick="prefillBoutWithPending('${e.id}',${r.fighter.id},'${r.sport}')" style="padding:3px 8px;font-size:12px">Match</button>` : ''}
+          <button class="btn btn-sm btn-danger" onclick="removeRegistration('${e.id}',${r.id})" style="padding:3px 8px">✕</button>
+        </div>`).join('')
+    : '<div class="empty" style="padding:1rem 0;font-size:13px">No fighters registered yet.</div>';
 
   $('event-detail-content').innerHTML = `
     <div class="event-detail-banner">
@@ -1229,8 +1267,19 @@ async function openEventDetail(id) {
       </div>
       ${boutRows}
     </div>
-    ${isMgmt ? `<div class="btn-row">
-      <button class="btn btn-sm btn-primary" onclick="showAddBoutForm('${e.id}')">+ Add bout</button>
+    ${isMgmt ? `
+    <div class="card" style="padding:0 1.25rem;margin-bottom:1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 0;font-weight:600;font-size:14px">
+        <span>Pending fighters</span>
+        <span style="font-size:12px;color:var(--muted);font-weight:400">${regs.length} waiting</span>
+      </div>
+      ${pendingRows}
+    </div>
+    <div class="btn-row">
+      ${isCoach
+        ? `<button class="btn btn-sm btn-primary" onclick="showRegisterFighterForm('${e.id}')">+ Register my fighter</button>`
+        : `<button class="btn btn-sm btn-primary" onclick="showAddBoutForm('${e.id}')">+ Add bout</button>`
+      }
       <button class="btn btn-sm btn-danger" onclick="deleteEvent(${e.id})">Delete event</button>
     </div>` : ''}`;
 }
@@ -1725,6 +1774,70 @@ async function submitAddBout() {
     goBack();
     openEventDetail(activeEvent);
   } catch(e) { toast('Error: ' + e.message); }
+}
+
+// ── fighter registration (coach: register 1 fighter as pending for a bout)
+
+function showRegisterFighterForm(eventId) {
+  activeEvent = eventId;
+  const ev = allEvents.find(e => String(e.id) === String(eventId));
+  const sports = (ev && ev.sports && ev.sports.length) ? ev.sports : ['kickboxing', 'mma', 'boxing'];
+  const sportSel = $('reg-sport');
+  sportSel.innerHTML = sports.map(s => `<option value="${s}">${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join('');
+  showPage('register-fighter');
+  loadRegFighters();
+}
+
+async function loadRegFighters() {
+  const sport = $('reg-sport').value;
+  let fighters = [];
+  try {
+    const gymsData = await apiFetch('/api/gyms');
+    const gymIds   = (gymsData.gyms || []).map(g => g.id);
+    const all      = await apiFetch(`/api/${sport}/fighters`);
+    fighters = (all.fighters || []).filter(f => gymIds.includes(f.gym_id));
+  } catch(_) {}
+  $('reg-fighter').innerHTML = fighters.length
+    ? fighters.map(f => `<option value="${f.id}">${f.name} (${f.wins}-${f.losses}-${f.draws})</option>`).join('')
+    : '<option value="">No fighters available</option>';
+}
+
+async function submitRegisterFighter() {
+  const sport    = $('reg-sport').value;
+  const fighterId = $('reg-fighter').value;
+  if (!fighterId) { toast('Select a fighter'); return; }
+  try {
+    await apiFetch(`/api/events/${activeEvent}/register`, {
+      method: 'POST',
+      body: JSON.stringify({sport, fighter_id: fighterId})
+    });
+    toast('Fighter registered — awaiting opponent');
+    goBack();
+    openEventDetail(activeEvent);
+  } catch(e) { toast('Error: ' + e.message); }
+}
+
+async function removeRegistration(eventId, regId) {
+  if (!confirm('Remove this fighter from the pending list?')) return;
+  try {
+    await apiFetch(`/api/events/${eventId}/registrations/${regId}`, {method:'DELETE'});
+    toast('Registration removed');
+    openEventDetail(activeEvent);
+  } catch(e) { toast('Error: ' + e.message); }
+}
+
+// Promoter/admin: open add-bout form with a pending fighter pre-selected as Fighter A
+function prefillBoutWithPending(eventId, fighterId, sport) {
+  showAddBoutForm(eventId);
+  // After fighters load, pre-select the pending fighter as Fighter A
+  const pollSelect = setInterval(() => {
+    const sel = $('bout-fighter-a');
+    if (sel && sel.options.length > 1) {
+      clearInterval(pollSelect);
+      const opt = [...sel.options].find(o => String(o.value) === String(fighterId));
+      if (opt) { sel.value = fighterId; updateBoutMatchScore(); }
+    }
+  }, 80);
 }
 
 // ── gyms

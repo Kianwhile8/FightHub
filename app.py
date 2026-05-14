@@ -593,10 +593,18 @@ def add_event_bout(event_id):
     # both fighters must belong to a gym
 
     if user["role"] == "coach":
-        if not _coach_owns_fighter(sport, fighter_a,user):
-            return err("fighter A is not in your gym", 403)
-        if not _coach_owns_fighter(sport, fighter_b,user):
-            return err("fighter B is not in your gym", 403)
+        owns_a = _coach_owns_fighter(sport, fighter_a, user)
+        owns_b = _coach_owns_fighter(sport, fighter_b, user)
+        if not owns_a and not owns_b:
+            return err("At least one fighter must be from your gym", 403)
+        # unowned fighter must be registered/pending for this event
+        with get_db(sport) as db_chk:
+            regs = db_chk.get_event_registrations(event_id)
+        reg_ids = {r["fighter"]["id"] for r in regs}
+        if not owns_a and fighter_a not in reg_ids:
+            return err("Fighter A is not in your gym and is not registered for this event", 403)
+        if not owns_b and fighter_b not in reg_ids:
+            return err("Fighter B is not in your gym and is not registered for this event", 403)
     try:
         with get_db(sport) as db:
             bout = db.add_bout(event_id, fighter_a, fighter_b)
@@ -617,6 +625,61 @@ def delete_event_bout(event_id, bout_id):
                 continue
     return err("Bout not found.", 404)
     
+
+
+# event fighter registrations (pending fighters awaiting a bout)
+
+@app.route("/api/events/<event_id>/register", methods=["POST"])
+@roles_required("coach", "promoter", "admin")
+def register_fighter_for_event(event_id):
+    """Coach registers one of their fighters as pending/available for a bout at this event."""
+    data, error = require_json("sport", "fighter_id")
+    if error:
+        return error
+    sport = data["sport"]
+    if sport not in VALID_SPORTS:
+        return err(f"unknown sport: {sport}")
+    fighter_id = int(data["fighter_id"])
+    user = current_user()
+    if user["role"] == "coach" and not _coach_owns_fighter(sport, fighter_id, user):
+        return err("This fighter is not in your gym", 403)
+    try:
+        with get_db(sport) as db:
+            reg = db.register_fighter_for_event(event_id, fighter_id)
+        return jsonify({"registration": reg}), 201
+    except ValueError as e:
+        return err(str(e))
+
+
+@app.route("/api/events/<event_id>/registrations", methods=["GET"])
+@login_required
+def get_event_registrations(event_id):
+    """Returns all pending fighter registrations for an event across all sports."""
+    registrations = []
+    for sport in VALID_SPORTS:
+        with get_db(sport) as db:
+            registrations.extend(db.get_event_registrations(event_id))
+    return jsonify({"event_id": event_id, "registrations": registrations})
+
+
+@app.route("/api/events/<event_id>/registrations/<int:reg_id>", methods=["DELETE"])
+@roles_required("coach", "promoter", "admin")
+def delete_event_registration(event_id, reg_id):
+    """Remove a fighter's pending registration. Coaches can only remove their own fighters."""
+    user = current_user()
+    for sport in VALID_SPORTS:
+        with get_db(sport) as db:
+            reg = db.get_registration(reg_id)
+            if reg and reg["event_id"] == str(event_id):
+                if user["role"] == "coach" and not _coach_owns_fighter(sport, reg["fighter"]["id"], user):
+                    return err("You don't have permission to remove this registration", 403)
+                try:
+                    db.remove_registration(reg_id)
+                    return jsonify({"deleted": reg_id})
+                except ValueError:
+                    continue
+    return err("Registration not found.", 404)
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
