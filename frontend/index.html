@@ -1076,13 +1076,16 @@ function renderDashboard() {
     el.addEventListener('click', ()=>openEventDetail(parseInt(el.dataset.eid))));
 }
 
+function recStr(f) { return f.record_hidden ? '--/--/--' : `${f.wins}-${f.losses}-${f.draws}`; }
+function recStat(val, hidden) { return hidden ? '--' : val; }
+
 function miniRow(f) {
   return `<div class="fighter-row" data-id="${f.id}" data-sport="${f.sport}" style="padding:8px 0">
     <div class="avatar" style="width:32px;height:32px;font-size:11px">${initials(f.name)}</div>
     <div class="fighter-info">
       <div class="fighter-name" style="font-size:13px">${f.name} ${sportBadge(f.sport)}</div>
     </div>
-    <span class="record-badge" style="font-size:12px">${f.wins}-${f.losses}-${f.draws}</span>
+    <span class="record-badge" style="font-size:12px">${recStr(f)}</span>
   </div>`;
 }
 
@@ -1117,7 +1120,7 @@ function fighterRowHTML(f) {
       <div class="fighter-name">${f.name} ${sportBadge(f.sport)}</div>
       <div class="fighter-meta">Age ${f.age} · ${f.weight_kg} kg</div>
     </div>
-    <span class="record-badge">${f.wins}-${f.losses}-${f.draws}</span>
+    <span class="record-badge">${recStr(f)}</span>
   </div>`;
 }
 
@@ -1411,8 +1414,9 @@ async function openFighterDetail(id, sport) {
     apiFetch(`/api/${sport}/fighters/${id}`),
     apiFetch(`/api/${sport}/fighters/${id}/fights`)
   ]);
-  const total   = fighter.wins+fighter.losses+fighter.draws||1;
-  const winRate = Math.round(fighter.wins/total*100);
+  const rh      = fighter.record_hidden;
+  const total   = rh ? 1 : (fighter.wins+fighter.losses+fighter.draws||1);
+  const winRate = rh ? null : Math.round(fighter.wins/total*100);
   const isAdmin = currentUser && currentUser.role === 'admin';
   const isCoach = currentUser && currentUser.role === 'coach';
   // Coaches can only edit/log fights for fighters assigned to a gym
@@ -1427,10 +1431,10 @@ async function openFighterDetail(id, sport) {
       </div>
     </div>
     <div class="detail-grid">
-      <div class="stat"><div class="stat-val">${fighter.wins}</div><div class="stat-lbl">Wins</div></div>
-      <div class="stat"><div class="stat-val">${fighter.losses}</div><div class="stat-lbl">Losses</div></div>
-      <div class="stat"><div class="stat-val">${fighter.draws}</div><div class="stat-lbl">Draws</div></div>
-      <div class="stat"><div class="stat-val">${winRate}%</div><div class="stat-lbl">Win rate</div></div>
+      <div class="stat"><div class="stat-val">${recStat(fighter.wins, rh)}</div><div class="stat-lbl">Wins</div></div>
+      <div class="stat"><div class="stat-val">${recStat(fighter.losses, rh)}</div><div class="stat-lbl">Losses</div></div>
+      <div class="stat"><div class="stat-val">${recStat(fighter.draws, rh)}</div><div class="stat-lbl">Draws</div></div>
+      <div class="stat"><div class="stat-val">${rh ? '--' : winRate+'%'}</div><div class="stat-lbl">Win rate</div></div>
     </div>
     ${canEdit ? `<div class="btn-row">
       <button class="btn btn-sm btn-primary" onclick="goLogFight()">+ Log fight</button>
@@ -1438,15 +1442,17 @@ async function openFighterDetail(id, sport) {
     </div>` : ''}
     <div class="card" style="padding:0 1.25rem">
       <div style="padding:.75rem 0;font-weight:600;font-size:14px">Fight history</div>
-      ${histData.fights.length
-        ? histData.fights.map(h=>`
-          <div class="history-row">
-            <span class="result-${h.result.toLowerCase()}">${h.result}</span>
-            <span style="flex:1;font-weight:500">vs ${h.opponent}</span>
-            <span style="color:var(--muted)">${h.method}</span>
-            <span style="color:var(--muted);font-size:12px">${h.date}</span>
-          </div>`).join('')
-        : '<div class="empty" style="padding:1.5rem">No fights logged yet.</div>'}
+      ${rh && !histData.fights.length
+        ? '<div class="empty" style="padding:1.5rem">Fight history is private.</div>'
+        : histData.fights.length
+          ? histData.fights.map(h=>`
+            <div class="history-row">
+              <span class="result-${h.result.toLowerCase()}">${h.result}</span>
+              <span style="flex:1;font-weight:500">vs ${h.opponent}</span>
+              <span style="color:var(--muted)">${h.method}</span>
+              <span style="color:var(--muted);font-size:12px">${h.date}</span>
+            </div>`).join('')
+          : '<div class="empty" style="padding:1.5rem">No fights logged yet.</div>'}
     </div>`;
 }
 
@@ -1497,7 +1503,7 @@ async function runMatchmake() {
     return `<div class="match-card">
       <div class="match-info">
         <div class="match-names">${fighter?fighter.name:'?'} <span style="color:var(--muted);font-weight:400">vs</span> ${m.name}</div>
-        <div class="match-meta">${fighter?fighter.weight_kg:'?'}kg · ${fighter?[fighter.wins,fighter.losses,fighter.draws].join('-'):''} &nbsp;vs&nbsp; ${m.weight_kg}kg · ${[m.wins,m.losses,m.draws].join('-')} · diff: ${m.weight_diff}kg</div>
+        <div class="match-meta">${fighter?fighter.weight_kg:'?'}kg · ${fighter?recStr(fighter):''} &nbsp;vs&nbsp; ${m.weight_kg}kg · ${recStr(m)} · diff: ${m.weight_diff}kg</div>
       </div>
       <span class="match-score-pill ${cls}">${m.match_score}% match</span>
     </div>`;
@@ -1564,6 +1570,7 @@ function renderProfile() {
   const displaySport = sport || f.sport || 'kickboxing';
   const total   = f.wins+f.losses+f.draws||1;
   const winRate = Math.round(f.wins/total*100);
+  const hidden  = currentUser && currentUser.hide_record;
 
   el.innerHTML = `
     <div class="card">
@@ -1580,6 +1587,14 @@ function renderProfile() {
         <div class="stat"><div class="stat-val">${f.draws}</div><div class="stat-lbl">Draws</div></div>
         <div class="stat"><div class="stat-val">${winRate}%</div><div class="stat-lbl">Win rate</div></div>
       </div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2 style="font-size:14px;margin-bottom:.75rem">Privacy</h2>
+      <label style="display:flex;align-items:center;gap:.6rem;cursor:pointer">
+        <input type="checkbox" id="privacy-check" ${hidden ? 'checked' : ''} onchange="setRecordPrivacy(this.checked)">
+        <span style="font-size:14px">Hide my record from other users</span>
+      </label>
+      <div style="font-size:12px;color:var(--muted);margin-top:.4rem">When enabled, your wins, losses, draws, and fight history will be hidden from other fighters, coaches, and promoters.</div>
     </div>`;
 }
 
@@ -1599,6 +1614,21 @@ async function linkFighterRecord() {
     toast('Fighter record linked!');
     renderProfile();
   } catch(e) { toast('Error: '+e.message); }
+}
+
+async function setRecordPrivacy(hide) {
+  try {
+    const data = await apiFetch('/api/auth/privacy', {
+      method:'PUT', body:JSON.stringify({hide_record: hide})
+    });
+    currentUser = {...currentUser, hide_record: data.user.hide_record};
+    toast(hide ? 'Record hidden from other users.' : 'Record is now visible.');
+  } catch(e) {
+    toast('Error: '+e.message);
+    // revert checkbox on failure
+    const cb = $('privacy-check');
+    if (cb) cb.checked = !hide;
+  }
 }
 
 // ── add fighter
@@ -1640,13 +1670,14 @@ async function renderRankings() {
       const rankCls = f.rank === 1 ? 'gold' : f.rank === 2 ? 'silver' : f.rank === 3 ? 'bronze' : '';
       const eloCls  = f.elo > 0 ? 'elo-positive' : f.elo < 0 ? 'elo-negative' : 'elo-neutral';
       const eloStr  = (f.elo > 0 ? '+' : '') + f.elo.toFixed(1);
-      const total   = f.wins + f.losses + f.draws;
+      const rh      = f.record_hidden;
+      const total   = rh ? '--' : f.wins + f.losses + f.draws;
       return `<div class="ranking-row" data-id="${f.id}" data-sport="${rankingSport}">
         <div class="rank-num ${rankCls}">${f.rank}</div>
         <div class="avatar">${initials(f.name)}</div>
         <div class="fighter-info">
           <div class="fighter-name">${f.name}</div>
-          <div class="fighter-meta">${f.wins}W · ${f.losses}L · ${f.draws}D · ${total} fights</div>
+          <div class="fighter-meta">${recStat(f.wins,rh)}W · ${recStat(f.losses,rh)}L · ${recStat(f.draws,rh)}D · ${total} fights</div>
         </div>
         ${bandPill(f.elo_band)}
         <span class="elo-pill ${eloCls}">${eloStr}</span>
@@ -1725,7 +1756,7 @@ async function loadBoutFighters() {
   }
 
   const opts = fighters.length
-    ? fighters.map(f => `<option value="${f.id}">${f.name} (${f.wins}-${f.losses}-${f.draws})</option>`).join('')
+    ? fighters.map(f => `<option value="${f.id}">${f.name} (${recStr(f)})</option>`).join('')
     : '<option value="">No fighters available</option>';
   $('bout-fighter-a').innerHTML = opts;
   $('bout-fighter-b').innerHTML = opts;
@@ -1798,7 +1829,7 @@ async function loadRegFighters() {
     fighters = (all.fighters || []).filter(f => gymIds.includes(f.gym_id));
   } catch(_) {}
   $('reg-fighter').innerHTML = fighters.length
-    ? fighters.map(f => `<option value="${f.id}">${f.name} (${f.wins}-${f.losses}-${f.draws})</option>`).join('')
+    ? fighters.map(f => `<option value="${f.id}">${f.name} (${recStr(f)})</option>`).join('')
     : '<option value="">No fighters available</option>';
 }
 
@@ -1915,14 +1946,14 @@ async function openGymDetail(gymId) {
           <span style="font-size:12px;color:var(--muted)">${data.fighters.length} total</span>
         </div>
         ${data.fighters.length ? data.fighters.map(f => {
-          const total   = f.wins + f.losses + f.draws;
+          const rh      = f.record_hidden;
           const eloCls  = f.elo > 0 ? 'elo-positive' : f.elo < 0 ? 'elo-negative' : 'elo-neutral';
           const eloStr  = (f.elo >= 0 ? '+' : '') + (f.elo || 0).toFixed(1);
           return `<div class="gym-fighter-row">
             <div class="avatar" style="cursor:pointer" onclick="openFighterDetail(${f.id},'${f.sport}')">${initials(f.name)}</div>
             <div style="flex:1;cursor:pointer" onclick="openFighterDetail(${f.id},'${f.sport}')">
               <div style="font-weight:500">${f.name} ${sportBadge(f.sport)}</div>
-              <div style="font-size:12px;color:var(--muted)">${f.wins}W · ${f.losses}L · ${f.draws}D · ${f.weight_kg}kg${isCoachOrAdmin ? ` · ID: ${f.id}` : ''}</div>
+              <div style="font-size:12px;color:var(--muted)">${recStat(f.wins,rh)}W · ${recStat(f.losses,rh)}L · ${recStat(f.draws,rh)}D · ${f.weight_kg}kg${isCoachOrAdmin ? ` · ID: ${f.id}` : ''}</div>
             </div>
             ${bandPill(f.elo_band)}
             <span class="elo-pill ${eloCls}" style="margin-left:6px;margin-right:8px">${eloStr}</span>

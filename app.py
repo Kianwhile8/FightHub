@@ -38,6 +38,22 @@ auth_db = authDB(db_dir=DB_DIR)
 
 
 
+def _mask_record(fighter: dict) -> dict:
+    return {**fighter, "wins": None, "losses": None, "draws": None, "record_hidden": True}
+
+def _apply_privacy(fighters: list, sport: str, viewer: dict | None) -> list:
+    hidden = auth_db.get_hidden_fighter_ids(sport)
+    if not hidden:
+        return fighters
+    is_admin = viewer and viewer["role"] == "admin"
+    own_id = viewer["fighter_id"] if viewer else None
+    own_sport = viewer["fighter_sport"] if viewer else None
+    return [
+        f if (is_admin or (own_id == f["id"] and own_sport == sport) or f["id"] not in hidden)
+        else _mask_record(f)
+        for f in fighters
+    ]
+
 def _coach_owns_fighter(sport:str,fighter_id:int, user:dict) -> bool:
 
     """Check if a coach owns a specific fighter. returns true if the user 
@@ -192,6 +208,18 @@ def link_fighter():
         return err(str(e))
     
 
+@app.route("/api/auth/privacy", methods=["PUT"])
+@login_required
+def update_privacy():
+    data = request.get_json(silent=True) or {}
+    hide = bool(data.get("hide_record", False))
+    try:
+        updated = auth_db.update_privacy(current_user()["id"], hide)
+        return jsonify({"user": updated})
+    except ValueError as e:
+        return err(str(e))
+
+
 @app.route("/api/auth/change-password", methods=["POST"])
 @login_required
 def change_password():
@@ -249,6 +277,7 @@ def list_fighters(sport):
     q = request.args.get("q", "").strip()
     with get_db(sport) as db:
         fighters = db.search_fighters(q) if q else db.get_all_fighters()
+    fighters = _apply_privacy(fighters, sport, current_user())
     return jsonify({"sport": sport, "fighters": fighters})
 
 
@@ -261,6 +290,7 @@ def get_fighter(sport, fighter_id):
         fighter = db.get_fighter(fighter_id)
     if not fighter:
         return err("Fighter not found", 404)
+    [fighter] = _apply_privacy([fighter], sport, current_user())
     return jsonify(fighter)
 
 
@@ -332,6 +362,12 @@ def delete_fighter(sport, fighter_id):
 def get_fighter_fights(sport, fighter_id):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
+    viewer = current_user()
+    hidden = auth_db.get_hidden_fighter_ids(sport)
+    is_admin = viewer and viewer["role"] == "admin"
+    is_own = viewer and viewer["fighter_id"] == fighter_id and viewer["fighter_sport"] == sport
+    if fighter_id in hidden and not is_admin and not is_own:
+        return jsonify({"fighter_id": fighter_id, "fights": [], "record_hidden": True})
     with get_db(sport) as db:
         history = db.get_fight_history(fighter_id)
     return jsonify({"fighter_id": fighter_id, "fights": history})
@@ -371,11 +407,17 @@ def add_fight(sport, fighter_id):
 
 
 @app.route("/api/<sport>/fights", methods=["GET"])
+@login_required
 def get_all_fights(sport):
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
+    viewer = current_user()
     with get_db(sport) as db:
         fights = db.get_all_fights()
+    if viewer["role"] != "admin":
+        hidden = auth_db.get_hidden_fighter_ids(sport)
+        own_id = viewer["fighter_id"] if viewer["fighter_sport"] == sport else None
+        fights = [f for f in fights if f["fighter_id"] not in hidden or f["fighter_id"] == own_id]
     return jsonify({"sport": sport, "fights": fights})
 
 
@@ -413,6 +455,7 @@ def get_rankings(sport):
                 [{**f, "elo": elo_ratings[f["id"]], "elo_band": elo_band(elo_ratings[f["id"]])} for f in fighters],
                     key=lambda x: x["elo"], reverse=True
             )
+            ranked = _apply_privacy(ranked, sport, current_user())
 
             #positional number
             for i, f in enumerate(ranked):
@@ -509,18 +552,20 @@ def gym_fighters(gym_id):
     if not gym:
         return err("gym not found", 404)
     from matchmaker import compute_elo_for_pool, elo_band
-    results =[]
+    viewer = current_user()
+    results = []
     for sport in VALID_SPORTS:
         with get_db(sport) as db:
             fighters = db.get_fighters_by_gym(gym_id)
             if fighters:
                 all_fighters = db.get_all_fighters()
-                all_histories = {f["id"]:db.get_fight_history(f["id"]) for f in all_fighters}
+                all_histories = {f["id"]: db.get_fight_history(f["id"]) for f in all_fighters}
                 elo_ratings = compute_elo_for_pool(all_fighters, all_histories)
-                for f in fighters:
-                    e = elo_ratings.get(f["id"], 0.0)
-                    results.append({**f, "sport": sport,
-                                    "elo": e, "elo_band": elo_band(e)})
+                sport_results = [
+                    {**f, "sport": sport, "elo": elo_ratings.get(f["id"], 0.0), "elo_band": elo_band(elo_ratings.get(f["id"], 0.0))}
+                    for f in fighters
+                ]
+                results.extend(_apply_privacy(sport_results, sport, viewer))
     return jsonify({"gym": gym, "fighters": results})
 
 @app.route("/api/gyms/<int:gym_id>/fighters/<int:fighter_id>", methods=["POST"])

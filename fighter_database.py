@@ -226,14 +226,14 @@ class FighterDB:
         """Return every fight log in this sport's database."""
         cur = self._conn.cursor()
         cur.execute("""
-            SELECT fh.id, f.name, fh.opponent_name, fh.result, fh.method, fh.date
+            SELECT fh.id, fh.fighter_id, f.name, fh.opponent_name, fh.result, fh.method, fh.date
             FROM fight_history fh
             JOIN fighters f ON f.id = fh.fighter_id
             ORDER BY fh.date DESC
         """)
         return [
-            {"id": r[0], "fighter": r[1], "opponent": r[2],
-             "result": r[3], "method": r[4], "date": r[5]}
+            {"id": r[0], "fighter_id": r[1], "fighter": r[2], "opponent": r[3],
+             "result": r[4], "method": r[5], "date": r[6]}
             for r in cur.fetchall()
         ]
 
