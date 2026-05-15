@@ -1748,16 +1748,45 @@ async function loadBoutFighters() {
       fighters = (all.fighters || []).filter(f => gymIds.includes(f.gym_id));
     } catch(_) {}
   } else {
-    // Promoters / admins: all fighters
+    // Promoters and admins: all fighters
     try {
       const data = await apiFetch(`/api/${sport}/fighters`);
       fighters = data.fighters || [];
     } catch(_) {}
   }
 
-  const opts = fighters.length
-    ? fighters.map(f => `<option value="${f.id}">${f.name} (${recStr(f)})</option>`).join('')
-    : '<option value="">No fighters available</option>';
+  if (!fighters.length) {
+    const noOpt = '<option value="">No fighters available</option>';
+    $('bout-fighter-a').innerHTML = noOpt;
+    $('bout-fighter-b').innerHTML = noOpt;
+    updateBoutMatchScore();
+    return;
+  }
+
+  let opts = '';
+  // Promoters and admins: group by registration status for this event
+  if (user && ['promoter', 'admin'].includes(user.role) && activeEvent) {
+    let registeredIds = new Set();
+    try {
+      const regData = await apiFetch(`/api/events/${activeEvent}/registrations`);
+      const regs = (regData.registrations || []).filter(r => r.sport === sport);
+      registeredIds = new Set(regs.map(r => r.fighter.id));
+    } catch(_) {}
+
+    const registered   = fighters.filter(f => registeredIds.has(f.id));
+    const unregistered = fighters.filter(f => !registeredIds.has(f.id));
+    const mkOpts = list => list.map(f => `<option value="${f.id}">${f.name} (${recStr(f)})</option>`).join('');
+
+    if (registered.length) {
+      opts += `<optgroup label="Registered for this event">${mkOpts(registered)}</optgroup>`;
+    }
+    if (unregistered.length) {
+      opts += `<optgroup label="${registered.length ? 'All other fighters' : 'All fighters'}">${mkOpts(unregistered)}</optgroup>`;
+    }
+  } else {
+    opts = fighters.map(f => `<option value="${f.id}">${f.name} (${recStr(f)})</option>`).join('');
+  }
+
   $('bout-fighter-a').innerHTML = opts;
   $('bout-fighter-b').innerHTML = opts;
   updateBoutMatchScore();
