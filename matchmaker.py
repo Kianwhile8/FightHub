@@ -462,6 +462,7 @@ def rank_opponents(
         results.append({
             **opp,
             "elo":          opp_elo,
+            "elo_band":     elo_band(opp_elo),
             "match_score":  score,
             "weight_diff":  round(abs(fighter["weight_kg"] - opp["weight_kg"]), 1),
         })

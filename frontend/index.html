@@ -80,7 +80,7 @@
     box-shadow: var(--shadow);
   }
  
-  /* ── stat grid ── */
+ 
   .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 1.5rem; }
   .stat { background: #111111; border: 1px solid #222222; border-radius: var(--radius);
           padding: 1rem; text-align: center; box-shadow: var(--shadow); }
@@ -533,6 +533,25 @@
           <div class="form-group">
             <label class="form-label">Fighter</label>
             <select id="mm-fighter" onchange="runMatchmake()"></select>
+          </div>
+        </div>
+        <div style="margin-top:1rem">
+          <div class="form-label" style="margin-bottom:6px">ELO Band</div>
+          <div class="chips" id="mm-elo-chips">
+            <button class="chip active" data-elo="all">All</button>
+            <button class="chip" data-elo="Amateur">Amateur</button>
+            <button class="chip" data-elo="Prospect">Prospect</button>
+            <button class="chip" data-elo="Contender">Contender</button>
+            <button class="chip" data-elo="Regional">Regional</button>
+            <button class="chip" data-elo="Elite">Elite</button>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem">
+          <div class="form-label" style="margin-bottom:6px">Weight Class</div>
+          <div class="chips" id="mm-weight-chips">
+            <button class="chip active" data-weight="all">All</button>
+            <button class="chip" data-weight="50">50 kg <span style="font-size:10px;opacity:.7">(47.5–52.5)</span></button>
+            <button class="chip" data-weight="55">55 kg <span style="font-size:10px;opacity:.7">(52.5–57.5)</span></button>
           </div>
         </div>
       </div>
@@ -1484,6 +1503,27 @@ async function confirmDelete(id, sport) {
 }
 
 // ── matchmaking
+let mmRawMatches=[], mmCurrentFighter=null, mmEloFilter='all', mmWeightFilter='all';
+
+const MM_WEIGHT_CLASSES={
+  '50':{min:47.5,max:52.5},
+  '55':{min:52.5,max:57.5}
+};
+
+document.querySelectorAll('#mm-elo-chips .chip').forEach(chip=>{
+  chip.addEventListener('click',()=>{
+    document.querySelectorAll('#mm-elo-chips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active'); mmEloFilter=chip.dataset.elo; renderMatchResults();
+  });
+});
+
+document.querySelectorAll('#mm-weight-chips .chip').forEach(chip=>{
+  chip.addEventListener('click',()=>{
+    document.querySelectorAll('#mm-weight-chips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active'); mmWeightFilter=chip.dataset.weight; renderMatchResults();
+  });
+});
+
 async function loadMMFighters() {
   const sport=$('mm-sport').value;
   const data=await apiFetch(`/api/${sport}/fighters`);
@@ -1495,15 +1535,27 @@ async function runMatchmake() {
   const sport=$('mm-sport').value, fid=$('mm-fighter').value;
   if(!fid) return;
   const data=await apiFetch(`/api/${sport}/fighters/${fid}/matches`);
+  mmRawMatches=data.matches||[];
+  mmCurrentFighter=allFighters.find(f=>f.id==fid&&f.sport===sport)||null;
+  renderMatchResults();
+}
+
+function renderMatchResults() {
   const el=$('match-results');
-  if(!data.matches.length){el.innerHTML='<div class="empty" style="padding:2rem">No other fighters in this sport yet.</div>';return;}
-  const fighter=allFighters.find(f=>f.id==fid&&f.sport===sport);
-  el.innerHTML=data.matches.map(m=>{
+  if(!mmRawMatches.length){el.innerHTML='<div class="empty" style="padding:2rem">No other fighters in this sport yet.</div>';return;}
+  let list=mmRawMatches;
+  if(mmEloFilter!=='all') list=list.filter(m=>m.elo_band===mmEloFilter);
+  if(mmWeightFilter!=='all'){
+    const wc=MM_WEIGHT_CLASSES[mmWeightFilter];
+    list=list.filter(m=>m.weight_kg>=wc.min&&m.weight_kg<=wc.max);
+  }
+  if(!list.length){el.innerHTML='<div class="empty" style="padding:2rem">No opponents match the selected filters.</div>';return;}
+  el.innerHTML=list.map(m=>{
     const cls=m.match_score>=75?'score-high':m.match_score>=50?'score-mid':'score-low';
     return `<div class="match-card">
       <div class="match-info">
-        <div class="match-names">${fighter?fighter.name:'?'} <span style="color:var(--muted);font-weight:400">vs</span> ${m.name}</div>
-        <div class="match-meta">${fighter?fighter.weight_kg:'?'}kg · ${fighter?recStr(fighter):''} &nbsp;vs&nbsp; ${m.weight_kg}kg · ${recStr(m)} · diff: ${m.weight_diff}kg</div>
+        <div class="match-names">${mmCurrentFighter?mmCurrentFighter.name:'?'} <span style="color:var(--muted);font-weight:400">vs</span> ${m.name}</div>
+        <div class="match-meta">${mmCurrentFighter?mmCurrentFighter.weight_kg:'?'}kg · ${mmCurrentFighter?recStr(mmCurrentFighter):''} &nbsp;vs&nbsp; ${m.weight_kg}kg · ${recStr(m)} · diff: ${m.weight_diff}kg · <span style="color:var(--muted)">${m.elo_band||''}</span></div>
       </div>
       <span class="match-score-pill ${cls}">${m.match_score}% match</span>
     </div>`;

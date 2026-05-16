@@ -126,7 +126,7 @@ def index():
 
 
 
-'''creating auth endpoints'''
+''' auth endpoints'''
 
 @app.route("/api/auth/register", methods = ["POST"])
 def register():
@@ -266,7 +266,7 @@ def admin_delete_user(user_id):
         return err(str(e)), 404
 
 
-'''creating fighter endpoints, must be logged in '''
+'''fighter endpoints, must be logged into fighter account'''
 
 
 @app.route("/api/<sport>/fighters", methods=["GET"])
@@ -355,7 +355,7 @@ def delete_fighter(sport, fighter_id):
 
 
 
-'''creating fight history'''
+''' fight history'''
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>/fights", methods=["GET"])
 @login_required
@@ -421,7 +421,7 @@ def get_all_fights(sport):
     return jsonify({"sport": sport, "fights": fights})
 
 
-'''function to create matches'''
+'''creating matches'''
 
 @app.route("/api/<sport>/fighters/<int:fighter_id>/matches", methods=["GET"])
 def get_matches(sport, fighter_id):
@@ -434,7 +434,7 @@ def get_matches(sport, fighter_id):
     except ValueError as e:
         return err(str(e), 404)
     
-    '''adding elo stats'''
+    '''elo stats'''
 
 @app.route("/api/<sport>/rankings", methods=["GET"])
 def get_rankings(sport):
@@ -465,7 +465,7 @@ def get_rankings(sport):
     except Exception as e:
         return err (str(e))
 
-'''function to validate statistics'''
+'''validate statistics'''
 
 @app.route("/api/stats", methods=["GET"])
 def stats():
@@ -606,7 +606,7 @@ def remove_fighter_from_gym(gym_id, fighter_id):
         return err(str(e), 404)
     
 
-# event fight cards
+'''event fight cards'''
 
 @app.route("/api/events/<event_id>/bouts", methods=["GET"])
 @login_required
@@ -672,7 +672,7 @@ def delete_event_bout(event_id, bout_id):
     
 
 
-# event fighter registrations (pending fighters awaiting a bout)
+'''fighter registrations, adding fighter to a pending bout'''
 
 @app.route("/api/events/<event_id>/register", methods=["POST"])
 @roles_required("coach", "promoter", "admin")
