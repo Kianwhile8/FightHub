@@ -548,10 +548,28 @@
         </div>
         <div style="margin-top:0.75rem">
           <div class="form-label" style="margin-bottom:6px">Weight Class</div>
-          <div class="chips" id="mm-weight-chips">
-            <button class="chip active" data-weight="all">All</button>
-            <button class="chip" data-weight="50">50 kg <span style="font-size:10px;opacity:.7">(47.5–52.5)</span></button>
-            <button class="chip" data-weight="55">55 kg <span style="font-size:10px;opacity:.7">(52.5–57.5)</span></button>
+          <div class="form-group" style="margin-top:4px">
+            <select id="mm-weight-select" onchange="mmWeightFilter=this.value;renderMatchResults()">
+              <option value="all">All weight classes</option>
+              <option value="Flyweight">Flyweight (≤ 50.5 kg / 111.3 lb)</option>
+              <option value="Super Flyweight">Super Flyweight (≤ 52 kg / 114.6 lb)</option>
+              <option value="Bantamweight">Bantamweight (≤ 53.5 kg / 117.9 lb)</option>
+              <option value="Super Bantamweight">Super Bantamweight (≤ 55 kg / 121.3 lb)</option>
+              <option value="Featherweight">Featherweight (≤ 57 kg / 125.7 lb)</option>
+              <option value="Super Featherweight">Super Featherweight (≤ 59 kg / 130.1 lb)</option>
+              <option value="Lightweight">Lightweight (≤ 61.5 kg / 135.6 lb)</option>
+              <option value="Super Lightweight">Super Lightweight (≤ 64 kg / 141.1 lb)</option>
+              <option value="Welterweight">Welterweight (≤ 67 kg / 147.7 lb)</option>
+              <option value="Super Welterweight">Super Welterweight (≤ 70 kg / 154.3 lb)</option>
+              <option value="Middleweight">Middleweight (≤ 73 kg / 160.9 lb)</option>
+              <option value="Super Middleweight">Super Middleweight (≤ 76 kg / 167.6 lb)</option>
+              <option value="Light-Heavyweight">Light-Heavyweight (≤ 79 kg / 174.2 lb)</option>
+              <option value="Super Light-Heavyweight">Super Light-Heavyweight (≤ 82.5 kg / 181.9 lb)</option>
+              <option value="Cruiserweight">Cruiserweight (≤ 86 kg / 189.6 lb)</option>
+              <option value="Super Cruiserweight">Super Cruiserweight (≤ 90 kg / 198.4 lb)</option>
+              <option value="Heavyweight">Heavyweight (≤ 95 kg / 209.4 lb)</option>
+              <option value="Super Heavyweight">Super Heavyweight (no limit)</option>
+            </select>
           </div>
         </div>
       </div>
@@ -766,7 +784,7 @@
           <div class="form-group"><label class="form-label">Method</label>
             <select id="fight-method">
               <option>Decision</option><option>KO</option><option>TKO</option>
-              <option>Submission</option><option>Disqualification</option>
+              <option>Disqualification</option>
             </select></div>
         </div>
         <div class="form-group"><label class="form-label">Date</label>
@@ -1066,7 +1084,7 @@ async function loadStats() {
 
 function refresh(page) {
   if (page==='dashboard')  { loadStats(); renderDashboard(); }
-  if (page==='fighters')   renderFighters();
+  if (page==='fighters')   { loadAll().then(renderFighters); }
   if (page==='events')     renderEvents();
   if (page==='rankings')   renderRankings();
   if (page==='history')    renderHistory();
@@ -1475,7 +1493,14 @@ async function openFighterDetail(id, sport) {
     </div>`;
 }
 
-function goLogFight() { $('fight-date').valueAsDate=new Date(); showPage('add-fight'); }
+function goLogFight() {
+  $('fight-date').valueAsDate=new Date();
+  const isMMA = activeFighter.sport === 'mma';
+  $('fight-method').innerHTML = '<option>Decision</option><option>KO</option><option>TKO</option>'
+    + (isMMA ? '<option>Submission</option>' : '')
+    + '<option>Disqualification</option>';
+  showPage('add-fight');
+}
 
 async function submitAddFight() {
   const opponent = $('fight-opponent').value.trim();
@@ -1506,8 +1531,24 @@ async function confirmDelete(id, sport) {
 let mmRawMatches=[], mmCurrentFighter=null, mmEloFilter='all', mmWeightFilter='all';
 
 const MM_WEIGHT_CLASSES={
-  '50':{min:47.5,max:52.5},
-  '55':{min:52.5,max:57.5}
+  'Flyweight':              {min:0,    max:50.5},
+  'Super Flyweight':        {min:50.5, max:52},
+  'Bantamweight':           {min:52,   max:53.5},
+  'Super Bantamweight':     {min:53.5, max:55},
+  'Featherweight':          {min:55,   max:57},
+  'Super Featherweight':    {min:57,   max:59},
+  'Lightweight':            {min:59,   max:61.5},
+  'Super Lightweight':      {min:61.5, max:64},
+  'Welterweight':           {min:64,   max:67},
+  'Super Welterweight':     {min:67,   max:70},
+  'Middleweight':           {min:70,   max:73},
+  'Super Middleweight':     {min:73,   max:76},
+  'Light-Heavyweight':      {min:76,   max:79},
+  'Super Light-Heavyweight':{min:79,   max:82.5},
+  'Cruiserweight':          {min:82.5, max:86},
+  'Super Cruiserweight':    {min:86,   max:90},
+  'Heavyweight':            {min:90,   max:95},
+  'Super Heavyweight':      {min:95,   max:Infinity}
 };
 
 document.querySelectorAll('#mm-elo-chips .chip').forEach(chip=>{
@@ -1517,12 +1558,6 @@ document.querySelectorAll('#mm-elo-chips .chip').forEach(chip=>{
   });
 });
 
-document.querySelectorAll('#mm-weight-chips .chip').forEach(chip=>{
-  chip.addEventListener('click',()=>{
-    document.querySelectorAll('#mm-weight-chips .chip').forEach(c=>c.classList.remove('active'));
-    chip.classList.add('active'); mmWeightFilter=chip.dataset.weight; renderMatchResults();
-  });
-});
 
 async function loadMMFighters() {
   const sport=$('mm-sport').value;
