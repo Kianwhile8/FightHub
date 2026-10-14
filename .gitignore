@@ -20,6 +20,23 @@ env/
 # SQLite databases
 data/*.db
 
+# User-uploaded files (served from GCS in production)
+uploads/
+
+# Internal security write-up — keep local, never publish
+SECURITY_AUDIT.md
+
+# Legacy pre-blueprint code, superseded by app/ and not imported anywhere.
+# Kept locally for reference only; it carries the old, insecure auth surface.
+app_v1.py
+auth.py
+fighter_database.py
+/matchmaker.py
+seed_demo.py
+frontend/index_v1.html
+app/services/auth_db.py
+app/services/fighter_db.py
+
 # Flask session files
 flask_session/
 
