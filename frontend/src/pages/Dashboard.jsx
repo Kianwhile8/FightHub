@@ -4,6 +4,10 @@ import { apiFetch } from '../api/client'
 import Spinner from '../components/Spinner'
 import SportTabs from '../components/SportTabs'
 import { SPORTS, SPORT_LABEL } from '../constants/sports'
+import { RankPill } from '../components/Pills'
+import { recordLabel } from '../utils/fighter'
+
+// The per-sport home page: fighter counts, plus the first few fighters.
 
 export default function Dashboard() {
   const { sport } = useParams()
@@ -26,17 +30,13 @@ export default function Dashboard() {
     <>
       <SportTabs title="Dashboard" />
 
-      {/* Each section shows as soon as its own query lands. Waiting for both
-          before rendering anything meant a blank screen for as long as the
-          slower one took, which on a phone connection reads as the app having
-          stalled. */}
+      {/* Each section renders as soon as its own query lands. */}
       <div className="stat-grid">
         <div className="stat stat--total">
           <div className="stat-val">{statsLoading ? '·' : stats?.total ?? '–'}</div>
           <div className="stat-lbl">Total Fighters</div>
         </div>
-        {/* Driven by SPORTS so a new discipline cannot be silently missing —
-            Muay Thai was counted in the total but had no tile of its own. */}
+        {/* One tile per sport in SPORTS. */}
         {SPORTS.map(s => (
           <div key={s} className={`stat${s === sport ? ' stat--active' : ''}`}>
             <div className="stat-val">{statsLoading ? '·' : stats?.[s] ?? '–'}</div>
@@ -60,19 +60,14 @@ export default function Dashboard() {
                     <div className="fighter-info">
                       <div className="fighter-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {f.name}
-                        {f.rank && (
-                          <span className={`rank-pill${f.rank <= 3 ? ' rank-pill--podium' : ''}`}
-                            title={`Ranked #${f.rank} in ${SPORT_LABEL[sport] ?? sport}`}>
-                            #{f.rank}
-                          </span>
-                        )}
+                        <RankPill rank={f.rank} sport={sport} />
                       </div>
                       <div className="fighter-meta">
                         {f.age != null ? `Age ${f.age}` : 'Age unknown'} · {f.weight_kg}kg
                       </div>
                     </div>
                     <span className="record-badge">
-                      {f.record_hidden ? '–' : `${f.wins ?? 0}W ${f.losses ?? 0}L ${f.draws ?? 0}D`}
+                      {recordLabel(f)}
                     </span>
                   </div>
                 ))}

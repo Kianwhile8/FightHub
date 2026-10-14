@@ -1,19 +1,16 @@
 """Input cleaning and bounds for anything that arrives from a client.
 
-The rules here are deliberately boring: trim it, cap it, check it is the type
-and shape it claims to be, and reject it plainly when it is not. Three things
-this module exists to stop, none of them exotic:
+Every `clean_*` function trims, caps and type-checks one value, returning the
+cleaned value or raising ValidationError (which the app turns into a 400).
+They guard against three things:
 
-* Unbounded text. Nothing in the app capped a string length, so any field would
-  accept a megabyte. The password field is the sharp end of that — every
-  submitted password is run through scrypt, and scrypt on a 1 MB input is a
-  CPU-denial-of-service primitive handed to anonymous callers.
-* Control characters and invisible formatting. A NUL byte, a bidi override or a
-  zero-width joiner in a fighter's name is never legitimate input, and it
-  travels into every list, every export and every log line that name appears
-  in.
-* Silent type coercion. `float(request.args.get(...))` raising ValueError inside
-  a route produced a 500 and an HTML error page the frontend could not parse.
+* Unbounded text. Every string has a length cap. Passwords matter most: each
+  one is hashed with scrypt, so an uncapped 1 MB password would let anyone
+  burn server CPU.
+* Control characters and invisible formatting (NUL bytes, bidi overrides,
+  zero-width joiners), which are never legitimate in a name or description.
+* Bad types. A malformed number raises ValidationError (a clean 400) instead of
+  ValueError deep inside a route (a 500).
 
 HTML is *not* stripped or escaped here. Free text is stored exactly as written
 and escaped at the point it is rendered — React does that by default, and the
@@ -65,18 +62,11 @@ def scrub(value: str) -> str:
 
 
 def clean_str(value, default=None, max_len: int = None, field: str = "value"):
-    """Trim a value from a JSON body, tolerating None.
+    """Trim and scrub a text value; return `default` if it is None or blank.
 
-    `data.get("description", "")` looks safe but is not: when the client sends
-    an explicit null the key *is* present, so the default never applies and the
-    call returns None. `.strip()` on that raises AttributeError, which — with no
-    JSON error handler — Flask renders as an HTML 500 page. The frontend then
-    fails to parse it, and the user sees
-    "Unexpected token '<', "<!doctype "... is not valid JSON"
-    instead of anything about the field that was empty.
-
-    Every form in this app sends `field || null` for optional inputs, so null is
-    the normal case, not an edge one.
+    Always use this rather than `data.get("x", "").strip()`. The forms send
+    `null` for empty optional fields, and when the key is present with a null
+    value `.get`'s default does not apply, so `.strip()` would crash on None.
     """
     if value is None:
         return default
@@ -89,6 +79,7 @@ def clean_str(value, default=None, max_len: int = None, field: str = "value"):
 
 
 def clean_email(value, field: str = "Email") -> str:
+    """Required email address, lower-cased and loosely format-checked."""
     if value is None:
         raise ValidationError(f"{field} is required.")
     text = scrub(str(value)).strip().lower()
@@ -124,6 +115,7 @@ def clean_password(value, field: str = "Password") -> str:
 
 def clean_int(value, field: str = "value", minimum: int = None,
               maximum: int = None, default=None):
+    """Optional whole number within [minimum, maximum]; `default` if blank."""
     if value is None or value == "":
         return default
     # bool is an int subclass; True would otherwise sail through as 1.
@@ -142,6 +134,7 @@ def clean_int(value, field: str = "value", minimum: int = None,
 
 def clean_float(value, field: str = "value", minimum: float = None,
                 maximum: float = None, default=None):
+    """Optional finite number within [minimum, maximum]; `default` if blank."""
     if value is None or value == "":
         return default
     if isinstance(value, bool):
@@ -163,6 +156,7 @@ def clean_float(value, field: str = "value", minimum: float = None,
 
 def clean_enum(value, allowed, field: str = "value", default=None,
                lower: bool = True):
+    """Optional value that must be one of `allowed`; `default` if blank."""
     if value is None or value == "":
         return default
     text = scrub(str(value)).strip()
@@ -176,6 +170,7 @@ def clean_enum(value, allowed, field: str = "value", default=None,
 
 def clean_date(value, field: str = "date", default=None,
                not_future: bool = False):
+    """Optional YYYY-MM-DD date (or a `date`); `default` if blank."""
     if value is None or value == "":
         return default
     if isinstance(value, date):

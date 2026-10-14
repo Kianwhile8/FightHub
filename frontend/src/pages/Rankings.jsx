@@ -4,16 +4,15 @@ import { apiFetch } from '../api/client'
 import Spinner from '../components/Spinner'
 import SportTabs from '../components/SportTabs'
 import { SPORT_LABEL } from '../constants/sports'
+import { BandPill, EloPill } from '../components/Pills'
+import { recordLabel } from '../utils/fighter'
 
+/** Medal colour for the top three rows. */
 function rankClass(rank) {
   if (rank === 1) return 'gold'
   if (rank === 2) return 'silver'
   if (rank === 3) return 'bronze'
   return ''
-}
-
-function bandClass(band) {
-  return `band-${(band ?? 'amateur').toLowerCase().replace(/\s+/g, '-')}`
 }
 
 export default function Rankings() {
@@ -43,14 +42,12 @@ export default function Rankings() {
               <div className="fighter-info">
                 <div className="fighter-name">{f.name}</div>
                 <div className="fighter-meta">
-                  {f.record_hidden ? '–' : `${f.wins ?? 0}W ${f.losses ?? 0}L ${f.draws ?? 0}D`}
+                  {recordLabel(f)}
                   {f.weight_kg && ` · ${f.weight_kg}kg`}
                 </div>
               </div>
-              {f.elo_band && <span className={`band-pill ${bandClass(f.elo_band)}`}>{f.elo_band}</span>}
-              <span className={`elo-pill ${(f.elo ?? 0) >= 0 ? 'elo-positive' : 'elo-negative'}`}>
-                {Math.round(f.elo ?? 0)}
-              </span>
+              <BandPill band={f.elo_band} />
+              <EloPill elo={f.elo} />
             </div>
           ))
         }

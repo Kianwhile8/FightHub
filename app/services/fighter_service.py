@@ -1,6 +1,19 @@
-"""FighterService — same external interface as the old SQLite FighterDB class,
-backed by SQLAlchemy. Blueprints continue to use `with get_db(sport) as db:`
-unchanged."""
+"""FighterService: fighters, fight history, ratings and event cards for ONE sport.
+
+Blueprints get an instance through `with get_db(sport) as db:` (app/helpers.py).
+The `with` block is only for readability — the SQLAlchemy session is
+request-scoped, so there is nothing to open or close.
+
+Sections:
+  - fighters            list / search / add / update / delete
+  - field cleaning      validation shared by add and update
+  - fight history       logging results and keeping W/L/D totals in step
+  - prior experience    a coach's declared record in other sports
+  - cross-sport / Elo   ratings, with experience carried between sports
+  - matchmaking         ranked opponent suggestions (logic in matchmaker.py)
+  - event bouts         the fight card for an event
+  - event registrations fighters putting themselves forward for an event
+"""
 
 from datetime import date as _date, datetime
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +29,18 @@ from ..models.event import Event, EventBout, EventRegistration
 
 
 class FighterService:
+    VALID_GENDERS = ("male", "female")
+    MIN_FIGHTER_AGE = 16
+
+    # Match the column widths, so an over-long value is refused with a clear
+    # message instead of a database error.
+    MAX_NAME_LEN = 100
+    MAX_DESCRIPTION_WORDS = 200
+    MAX_DESCRIPTION_CHARS = 2000
+    # A plausible range for a competing adult, in kilograms.
+    MIN_WEIGHT_KG = 20.0
+    MAX_WEIGHT_KG = 400.0
+
     def __init__(self, sport: str) -> None:
         self.sport = sport
 
@@ -27,6 +52,7 @@ class FighterService:
     def get_all_fighters(self, county: str = None,
                          max_weight: float = None,
                          gender: str = None) -> list[dict]:
+        """Every fighter in this sport, filtered, sorted by name."""
         q = Fighter.query.filter_by(sport=self.sport)
         return [f.to_dict() for f in
                 self._filtered(q, county, max_weight, gender).order_by(Fighter.name).all()]
@@ -34,6 +60,7 @@ class FighterService:
     def search_fighters(self, query: str, county: str = None,
                         max_weight: float = None,
                         gender: str = None) -> list[dict]:
+        """Fighters whose name contains `query`, with the same filters."""
         q = Fighter.query.filter(
             Fighter.sport == self.sport,
             Fighter.name.ilike(f"%{query}%"),
@@ -46,15 +73,12 @@ class FighterService:
                   gender: str = None):
         """Apply the shared list filters, so browsing and searching agree.
 
-        `max_weight` is an inclusive ceiling — "at or under 57 kg" — which is
-        how a coach actually thinks about it: they want everyone their fighter
-        could plausibly meet, not one narrow division.
+        `max_weight` is an inclusive ceiling ("at or under 57 kg"), not a
+        single division, so a coach sees everyone their fighter could meet.
 
-        `gender` is an exact match, and profiles that have not stated one are
-        excluded rather than shown under both. Someone filtering to "female" is
-        almost always building a card or looking for an opponent, and a profile
-        of unknown sex is not a candidate for either — matchmaking refuses those
-        pairings too. They remain visible with the filter off.
+        `gender` is an exact match: profiles with no gender stated are left
+        out when filtering, since they cannot be matched either way. They still
+        appear with the filter off.
         """
         if county:
             q = q.filter(Fighter.county == county)
@@ -65,25 +89,14 @@ class FighterService:
         return q
 
     def get_fighter(self, fighter_id: int) -> dict | None:
+        """One fighter in this sport, or None."""
         f = Fighter.query.filter_by(id=fighter_id, sport=self.sport).first()
         return f.to_dict() if f else None
-
-    VALID_GENDERS = ("male", "female")
-
-    # Matches the column widths, so an over-long value is refused with a clear
-    # message instead of raising a DataError from the driver.
-    MAX_NAME_LEN = 100
-    MAX_DESCRIPTION_WORDS = 200
-    MAX_DESCRIPTION_CHARS = 2000
-    # A plausible range for a competing adult, in kilograms. The lower bound is
-    # the previous `weight > 0` CHECK made useful: 0.5 kg passed that.
-    MIN_WEIGHT_KG = 20.0
-    MAX_WEIGHT_KG = 400.0
 
     def add_fighter(self, name: str, weight: float, date_of_birth=None,
                     description: str = None, county: str = None,
                     gender: str = None) -> int:
-        from datetime import date as _date
+        """Create a fighter (with an empty 0-0-0 record) and return its id."""
         name        = self._clean_name(name)
         weight      = self._clean_weight(weight)
         description = self._clean_description(description)
@@ -93,8 +106,9 @@ class FighterService:
             age = today.year - date_of_birth.year - (
                 (today.month, today.day) < (date_of_birth.month, date_of_birth.day)
             )
-            if age < 16:
-                raise ValueError("Fighter must be at least 16 years old.")
+            if age < self.MIN_FIGHTER_AGE:
+                raise ValueError(
+                    f"Fighter must be at least {self.MIN_FIGHTER_AGE} years old.")
         if gender is not None and gender not in self.VALID_GENDERS:
             raise ValueError("Gender must be 'male' or 'female'.")
         f = Fighter(
@@ -111,12 +125,10 @@ class FighterService:
         return f.id
 
     def update_fighter(self, fighter_id: int, **fields) -> None:
+        """Update only the fields passed, validated exactly as in add_fighter."""
         f = Fighter.query.filter_by(id=fighter_id, sport=self.sport).first()
         if not f:
             raise ValueError(f"Fighter {fighter_id} not found.")
-        # Clean through the same helpers as creation. An edit reaches the same
-        # columns, so anything refused on the way in has to be refused here too
-        # — otherwise the cap is bypassed by creating a row and then updating it.
         if "name" in fields:
             fields["name"] = self._clean_name(fields["name"])
         if "weight" in fields:
@@ -133,7 +145,29 @@ class FighterService:
                 setattr(f, field, fields[field])
         db.session.commit()
 
-    # ── field cleaning, shared by create and update ────────────────────────
+    def delete_fighter(self, fighter_id: int) -> None:
+        """Delete a fighter; their record, history and bouts cascade with them."""
+        f = Fighter.query.filter_by(id=fighter_id, sport=self.sport).first()
+        if not f:
+            raise ValueError(f"Fighter {fighter_id} not found.")
+        db.session.delete(f)
+        db.session.commit()
+
+    def assign_gym(self, fighter_id: int, gym_id: int | None) -> None:
+        """Move a fighter to a gym, or remove them from one with `None`."""
+        f = Fighter.query.filter_by(id=fighter_id, sport=self.sport).first()
+        if not f:
+            raise ValueError(f"Fighter {fighter_id} not found.")
+        f.gym_id = gym_id
+        db.session.commit()
+
+    def get_fighters_by_gym(self, gym_id: int) -> list[dict]:
+        """A gym's fighters in this sport, sorted by name."""
+        return [f.to_dict() for f in
+                Fighter.query.filter_by(sport=self.sport, gym_id=gym_id)
+                             .order_by(Fighter.name).all()]
+
+    # ── field cleaning, shared by add and update ───────────────────────────
 
     @classmethod
     def _clean_name(cls, value):
@@ -155,34 +189,12 @@ class FighterService:
 
     @staticmethod
     def _clean_county(value):
-        """A county has to be one we actually list.
-
-        Free text here was stored verbatim and then used as a filter value, so
-        a typo produced a county nobody else could ever match on.
-        """
+        """A county must be one from ENGLISH_COUNTIES (app/constants.py), so
+        the county filter can always match it."""
         county = clean_str(value, max_len=100, field="County")
         if county and county not in ENGLISH_COUNTIES:
             raise ValidationError(f"'{county}' is not a recognised county.")
         return county
-
-    def delete_fighter(self, fighter_id: int) -> None:
-        f = Fighter.query.filter_by(id=fighter_id, sport=self.sport).first()
-        if not f:
-            raise ValueError(f"Fighter {fighter_id} not found.")
-        db.session.delete(f)
-        db.session.commit()
-
-    def assign_gym(self, fighter_id: int, gym_id: int | None) -> None:
-        f = Fighter.query.filter_by(id=fighter_id, sport=self.sport).first()
-        if not f:
-            raise ValueError(f"Fighter {fighter_id} not found.")
-        f.gym_id = gym_id
-        db.session.commit()
-
-    def get_fighters_by_gym(self, gym_id: int) -> list[dict]:
-        return [f.to_dict() for f in
-                Fighter.query.filter_by(sport=self.sport, gym_id=gym_id)
-                             .order_by(Fighter.name).all()]
 
     # ── fight history ──────────────────────────────────────────────────────
 
@@ -190,6 +202,11 @@ class FighterService:
                   method: str = "Decision", fight_date: str = None,
                   opponent_id: int = None, ruleset: str = None,
                   event_id: int = None) -> int:
+        """Log one fighter's result (W/L/D) and update their record.
+
+        If the matchup is on an event card and `event_id` is not given, the
+        fight is attributed to that event and the card bout is marked complete.
+        """
         result = result.upper()
         if result not in ("W", "L", "D"):
             raise ValueError("Result must be 'W', 'L', or 'D'.")
@@ -218,19 +235,32 @@ class FighterService:
         if card_bout and not card_bout.completed:
             self._stamp_bout(card_bout, self._bout_result(card_bout, fighter_id, result),
                              method, fight_date)
-        rec = f.record
-        if result == "W": rec.wins   += 1
-        if result == "L": rec.losses += 1
-        if result == "D": rec.draws  += 1
+        self._tally(f, result)
         db.session.commit()
         return history.id
 
+    @staticmethod
+    def _tally(fighter: Fighter, result: str) -> None:
+        """Add one W, L or D to a fighter's record, creating it if missing."""
+        rec = fighter.record
+        if rec is None:
+            # Explicit zeros: the column defaults only apply on INSERT, so a
+            # new record would otherwise hold None until it is saved.
+            rec = FighterRecord(fighter_id=fighter.id, wins=0, losses=0, draws=0)
+            db.session.add(rec)
+            fighter.record = rec
+        if result == "W": rec.wins   += 1
+        if result == "L": rec.losses += 1
+        if result == "D": rec.draws  += 1
+
     def get_fight_history(self, fighter_id: int) -> list[dict]:
+        """One fighter's fights, newest first."""
         rows = FightHistory.query.filter_by(fighter_id=fighter_id)\
                                  .order_by(FightHistory.fight_date.desc()).all()
         return [h.to_dict() for h in rows]
 
     def get_all_fights(self) -> list[dict]:
+        """Every logged fight in this sport, newest first (History page)."""
         rows = (FightHistory.query
                 .join(Fighter, FightHistory.fighter_id == Fighter.id)
                 .filter(Fighter.sport == self.sport)
@@ -241,6 +271,7 @@ class FighterService:
     # ── prior experience (declared) ────────────────────────────────────────
 
     def list_prior_experience(self, fighter_id: int) -> list[dict]:
+        """Declared records in other sports for one fighter."""
         return [p.to_dict() for p in
                 PriorExperience.query.filter_by(fighter_id=fighter_id)
                                      .order_by(PriorExperience.sport).all()]
@@ -288,6 +319,7 @@ class FighterService:
         return row.to_dict()
 
     def delete_prior_experience(self, fighter_id: int, entry_id: int) -> None:
+        """Remove one declared-experience entry."""
         row = PriorExperience.query.filter_by(id=entry_id, fighter_id=fighter_id).first()
         if not row:
             raise ValueError(f"Prior experience entry {entry_id} not found.")
@@ -311,6 +343,7 @@ class FighterService:
 
     @staticmethod
     def _last_bout_dates(fighter_ids: list[int]) -> dict[int, str]:
+        """{fighter_id: date of their most recent fight}, in one query."""
         if not fighter_ids:
             return {}
         rows = (db.session.query(FightHistory.fighter_id,
@@ -323,9 +356,9 @@ class FighterService:
     def _native_elo_pool(sport: str) -> dict[int, float]:
         """Unseeded ratings for a whole discipline.
 
-        This is the basis for transfer credit into *other* disciplines, and is
-        deliberately unseeded: seeding from an already-seeded rating would let
-        credit chain across three sports and compound.
+        Used as the basis for experience credit into OTHER sports. It is
+        deliberately unseeded, so credit cannot chain and compound across
+        several sports.
         """
         from .matchmaker import compute_elo_for_pool
         pool = Fighter.query.filter_by(sport=sport).all()
@@ -338,9 +371,10 @@ class FighterService:
     def experience_sources(self, fighter_ids: list[int]) -> dict[int, list[dict]]:
         """Each fighter's record in disciplines other than this one.
 
-        Two origins: profiles owned by the same user account, and experience
-        declared by a coach for fighters who have no account. Costs nothing
-        extra when nobody in the pool has a cross-sport history.
+        Returns {fighter_id: [source, ...]}. Sources come from two places:
+          1. "sibling" profiles in other sports owned by the same user account
+             (these carry a real Elo from that sport), and
+          2. PriorExperience rows a coach declared (no Elo; `declared: True`).
         """
         sources: dict[int, list[dict]] = {fid: [] for fid in fighter_ids}
         if not fighter_ids:
@@ -419,6 +453,7 @@ class FighterService:
 
     def get_matches(self, fighter_id: int,
                     include_ineligible: bool = False) -> list[dict]:
+        """Opponents for one fighter, best first. Scoring is in matchmaker.py."""
         from .matchmaker import rank_opponents
         fighter = Fighter.query.filter_by(id=fighter_id, sport=self.sport).first()
         if not fighter:
@@ -441,6 +476,11 @@ class FighterService:
 
     def add_bout(self, event_id: str, fighter_a_id: int, fighter_b_id: int,
                  description: str = None, ruleset: str = None) -> dict:
+        """Put a matchup on an event's card.
+
+        Refuses duplicates and mixed-gender bouts, and clears both fighters'
+        pending registrations for the event (they are now booked).
+        """
         for fid in (fighter_a_id, fighter_b_id):
             if not Fighter.query.filter_by(id=fid).first():
                 raise ValueError(f"Fighter {fid} not found.")
@@ -457,8 +497,7 @@ class FighterService:
             raise ValueError("This matchup already exists on the event card.")
         a = Fighter.query.filter_by(id=fighter_a_id).first()
         b = Fighter.query.filter_by(id=fighter_b_id).first()
-        # Checked here rather than only in the blueprint so no route, script or
-        # future caller can put a mixed bout on a card.
+        # Enforced here, not just in the route, so no caller can bypass it.
         if a.gender and b.gender and a.gender != b.gender:
             raise ValueError(
                 f"{a.name} and {b.name} cannot be matched: "
@@ -482,13 +521,17 @@ class FighterService:
         return bout.to_dict()
 
     def get_bout(self, bout_id: int) -> dict | None:
+        """One card bout, or None."""
         bout = db.session.get(EventBout, bout_id)
         return bout.to_dict() if bout else None
 
     def complete_bout(self, bout_id: int, result: str, method: str = "Decision",
                       fight_date: str = None) -> dict:
-        """Check a bout off as complete on the event card. Records the result in
-        both fighters' histories, attributed to the event it was listed on."""
+        """Mark a card bout complete and log the result for both fighters.
+
+        `result` is from the card's point of view: "A" (fighter A won),
+        "B" (fighter B won) or "D" (draw).
+        """
         result = (result or "").upper()
         if result not in ("A", "B", "D"):
             raise ValueError("Result must be 'A', 'B', or 'D'.")
@@ -516,13 +559,7 @@ class FighterService:
                 ruleset=bout.ruleset,
                 event_id=event_id,
             ))
-            rec = fighter.record
-            if rec is None:
-                rec = FighterRecord(fighter_id=fighter.id)
-                db.session.add(rec)
-            if res == "W": rec.wins   += 1
-            if res == "L": rec.losses += 1
-            if res == "D": rec.draws  += 1
+            self._tally(fighter, res)
         self._stamp_bout(bout, result, method, fight_date)
         db.session.commit()
         return bout.to_dict()
@@ -555,8 +592,11 @@ class FighterService:
 
     @staticmethod
     def _event_pk(bout: EventBout) -> int | None:
-        """EventBout.event_id is text for legacy reasons — resolve it to a real
-        Event row, or None if it points at a client-generated id."""
+        """The bout's Event primary key, or None.
+
+        EventBout.event_id is a text column (older cards used client-generated
+        ids), so it may not point at a real Event row.
+        """
         try:
             pk = int(bout.event_id)
         except (TypeError, ValueError):
@@ -574,18 +614,21 @@ class FighterService:
 
     @staticmethod
     def _stamp_bout(bout: EventBout, result: str, method: str, fight_date: str) -> None:
+        """Mark a card bout complete with its result."""
         bout.completed  = True
         bout.result     = result
         bout.method     = method
         bout.fight_date = fight_date
 
     def get_bouts_for_events(self, event_id: str) -> list[dict]:
+        """An event's card bouts in this sport, in the order they were added."""
         return [b.to_dict() for b in
                 EventBout.query.filter_by(event_id=str(event_id))
                                .filter_by(sport=self.sport)
                                .order_by(EventBout.created_at).all()]
 
     def delete_bout(self, bout_id: int) -> None:
+        """Remove a bout from its card."""
         bout = db.session.get(EventBout, bout_id)
         if not bout:
             raise ValueError(f"Bout {bout_id} not found.")
@@ -595,6 +638,7 @@ class FighterService:
     # ── event registrations ────────────────────────────────────────────────
 
     def register_fighter_for_event(self, event_id: str, fighter_id: int) -> dict:
+        """Put a fighter forward for an event (once per event)."""
         if not Fighter.query.filter_by(id=fighter_id).first():
             raise ValueError(f"Fighter {fighter_id} not found.")
         if EventRegistration.query.filter_by(
@@ -616,16 +660,19 @@ class FighterService:
         return reg.to_dict()
 
     def get_registration(self, reg_id: int) -> dict | None:
+        """One registration, or None."""
         reg = db.session.get(EventRegistration, reg_id)
         return reg.to_dict() if reg else None
 
     def get_event_registrations(self, event_id: str) -> list[dict]:
+        """An event's registrations in this sport, oldest first."""
         return [r.to_dict() for r in
                 EventRegistration.query.filter_by(
                     event_id=str(event_id), sport=self.sport
                 ).order_by(EventRegistration.registered_at).all()]
 
     def remove_registration(self, reg_id: int) -> None:
+        """Withdraw a registration."""
         reg = db.session.get(EventRegistration, reg_id)
         if not reg:
             raise ValueError(f"Registration {reg_id} not found.")

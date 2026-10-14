@@ -7,6 +7,9 @@ import { apiFetch } from '../api/client'
 import { lastSport } from '../constants/sports'
 import { useEntitlement } from '../hooks/useEntitlement'
 
+// The signed-in app shell: sidebar navigation, the trial/subscription banner,
+// and the current page (<Outlet />).
+
 // Inline SVG icon — renders identically on every OS/browser
 function Icon({ d, size = 16 }) {
   return (
@@ -33,12 +36,11 @@ const ICONS = {
   close:     ['M6 18L18 6', 'M6 6l12 12'],
 }
 
-/** A one-line strip above the page, for states the user has to act on.
+/** A one-line strip above the page, for subscription states the user has to
+ *  act on (trial ending, payment failed, read-only).
  *
- *  Not dismissible, on purpose. Remembering a dismissal needs persistence, and
- *  localStorage is "storage" under PECR — it would drag an entry into the cookie
- *  policy and the consent banner's category list for the sake of hiding one
- *  line. Keeping it small is the better trade.
+ *  Not dismissible: remembering a dismissal would need localStorage, which
+ *  would have to be declared in the cookie policy.
  */
 function TrialBanner() {
   const { state, trial_days_left: daysLeft, isLockedOut } = useEntitlement()
@@ -74,6 +76,19 @@ function TrialBanner() {
   }
 
   return null
+}
+
+/** A sidebar link. Highlights itself on the current route and closes the
+ *  mobile menu when clicked. */
+function NavItem({ to, icon, label, onNavigate }) {
+  return (
+    <NavLink to={to}
+      className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+      onClick={onNavigate}>
+      <span className="nav-icon"><Icon d={icon} /></span>
+      <span>{label}</span>
+    </NavLink>
+  )
 }
 
 export default function Layout() {
@@ -113,71 +128,28 @@ export default function Layout() {
       <aside className={`sidebar${sidebarOpen ? ' sidebar--open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">Fight<span>Hub</span></div>
-          {/* The discipline switcher lives on the sport-scoped pages now — see
-              components/SportTabs.jsx. In the shell it implied a global setting
-              that Events, Gyms and Profile did not honour. */}
         </div>
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <div className="nav-section">General</div>
 
-          <NavLink to={`/${sport}/dashboard`}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            onClick={close}>
-            <span className="nav-icon"><Icon d={ICONS.dashboard} /></span>
-            <span>Dashboard</span>
-          </NavLink>
-
-          <NavLink to={`/${sport}/fighters`}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            onClick={close}>
-            <span className="nav-icon"><Icon d={ICONS.fighters} /></span>
-            <span>Fighters</span>
-          </NavLink>
-
-          <NavLink to={`/${sport}/rankings`}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            onClick={close}>
-            <span className="nav-icon"><Icon d={ICONS.rankings} /></span>
-            <span>Rankings</span>
-          </NavLink>
-
-          <NavLink to={`/${sport}/history`}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            onClick={close}>
-            <span className="nav-icon"><Icon d={ICONS.history} /></span>
-            <span>Fight History</span>
-          </NavLink>
-
-          <NavLink to="/events"
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            onClick={close}>
-            <span className="nav-icon"><Icon d={ICONS.events} /></span>
-            <span>Events</span>
-          </NavLink>
+          <NavItem to={`/${sport}/dashboard`} icon={ICONS.dashboard} label="Dashboard"    onNavigate={close} />
+          <NavItem to={`/${sport}/fighters`}  icon={ICONS.fighters}  label="Fighters"     onNavigate={close} />
+          <NavItem to={`/${sport}/rankings`}  icon={ICONS.rankings}  label="Rankings"     onNavigate={close} />
+          <NavItem to={`/${sport}/history`}   icon={ICONS.history}   label="Fight History" onNavigate={close} />
+          <NavItem to="/events"               icon={ICONS.events}    label="Events"       onNavigate={close} />
 
           {['coach', 'admin'].includes(role) && (
             <>
               <div className="nav-section">Management</div>
-
-              <NavLink to="/gyms"
-                className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-                onClick={close}>
-                <span className="nav-icon"><Icon d={ICONS.gyms} /></span>
-                <span>Gyms</span>
-              </NavLink>
+              <NavItem to="/gyms" icon={ICONS.gyms} label="Gyms" onNavigate={close} />
             </>
           )}
 
           {role === 'admin' && (
             <>
               <div className="nav-section">Admin</div>
-              <NavLink to="/admin"
-                className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-                onClick={close}>
-                <span className="nav-icon"><Icon d={ICONS.admin} /></span>
-                <span>Admin Panel</span>
-              </NavLink>
+              <NavItem to="/admin" icon={ICONS.admin} label="Admin Panel" onNavigate={close} />
             </>
           )}
         </nav>
@@ -196,23 +168,11 @@ export default function Layout() {
             </div>
           </div>
 
-          <NavLink to="/profile"
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-            onClick={close}>
-            <span className="nav-icon"><Icon d={ICONS.profile} /></span>
-            <span>My Profile</span>
-          </NavLink>
+          <NavItem to="/profile" icon={ICONS.profile} label="My Profile" onNavigate={close} />
 
-          {/* Filed with the account links rather than the features, because that
-              is what it is. Hidden for administrators, who never pay — they can
-              still reach /billing directly and are told so. */}
+          {/* Hidden for admins, who never pay. */}
           {role !== 'admin' && (
-            <NavLink to="/billing"
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              onClick={close}>
-              <span className="nav-icon"><Icon d={ICONS.billing} /></span>
-              <span>Subscription</span>
-            </NavLink>
+            <NavItem to="/billing" icon={ICONS.billing} label="Subscription" onNavigate={close} />
           )}
 
           <button className="nav-item" style={{ color: 'var(--danger)' }}
@@ -221,9 +181,7 @@ export default function Layout() {
             <span>Sign out</span>
           </button>
 
-          {/* Reachable from every page, not only from the profile — someone
-              looking for the privacy notice should not have to guess that it
-              is filed under their account settings. */}
+          {/* Legal links on every page, not just the profile. */}
           <div className="sidebar-legal">
             <Link to="/terms" onClick={close}>Terms</Link>
             <Link to="/privacy" onClick={close}>Privacy</Link>

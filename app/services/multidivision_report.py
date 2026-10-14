@@ -23,6 +23,7 @@ RULE = "─" * 78
 
 
 def _fixture(sport: str = None):
+    """Fixture fighters (recognised by the NOTE prefix on their description)."""
     q = Fighter.query.filter(Fighter.description.like(f"{NOTE}%"))
     if sport:
         q = q.filter(Fighter.sport == sport)
@@ -30,15 +31,18 @@ def _fixture(sport: str = None):
 
 
 def _find(name: str, sport: str):
+    """One fixture fighter by name, or None."""
     return next((f for f in _fixture(sport) if f.name == name), None)
 
 
 def _bouts(f: Fighter) -> int:
+    """Native bouts on the fighter's record."""
     r = f.record
     return (r.wins + r.losses + r.draws) if r else 0
 
 
 def _record_str(f: Fighter) -> str:
+    """Record as "W-L-D"."""
     r = f.record
     return f"{r.wins}-{r.losses}-{r.draws}" if r else "0-0-0"
 
@@ -46,6 +50,7 @@ def _record_str(f: Fighter) -> str:
 # ── section 1: where each crossover's credit comes from ────────────────────
 
 def transfer_register(sport: str, out) -> None:
+    """Section 1: for each crossover in `sport`, list where its credit came from."""
     svc     = FighterService(sport)
     pool    = _fixture(sport)
     ids     = [f.id for f in pool]
@@ -108,6 +113,7 @@ def _eff(sport: str, name: str) -> tuple:
 
 
 def paired_comparisons(out) -> None:
+    """Section 2: compare each A/B pair from the fixture side by side."""
     out(f"\n{RULE}\nPAIRED COMPARISONS — one variable changed at a time\n{RULE}")
 
     # ── direction of travel ───────────────────────────────────────────────
@@ -194,6 +200,7 @@ def paired_comparisons(out) -> None:
 # ── section 3: what the matchmaker actually offers ────────────────────────
 
 def match_list(sport: str, name: str, out, limit: int = 6) -> None:
+    """Print the top `limit` opponents offered to one fighter, plus who was filtered."""
     svc = FighterService(sport)
     f   = _find(name, sport)
     if not f:
@@ -239,6 +246,7 @@ def match_list(sport: str, name: str, out, limit: int = 6) -> None:
 
 
 def match_lists(out) -> None:
+    """Section 3: match lists for the crossovers, the controls and the women."""
     out(f"\n{RULE}\nWHAT THE MATCHMAKER OFFERS\n{RULE}")
     out("`eff` and `xfer` are the opponent's effective and transferred bouts.")
     out("Filtered-out rows failed the experience gap; never-offered rows are a")
@@ -261,6 +269,7 @@ def match_lists(out) -> None:
 # ── section 4: the filters, stated as rules and then tested ───────────────
 
 def filter_checks(out) -> None:
+    """Section 4: state the experience-gap rules, then test them."""
     out(f"\n{RULE}\nFILTER BEHAVIOUR\n{RULE}")
     out(f"  A true debutant may face at most {debut_max_opponent_bouts} effective bouts.")
     out(f"  Otherwise the cap is {experience_ratio_limit} × your bouts"
@@ -316,6 +325,7 @@ def filter_checks(out) -> None:
 # ── entry point ───────────────────────────────────────────────────────────
 
 def report(out=print) -> None:
+    """Print the full report through `out` (one call per line)."""
     if not _fixture():
         out("No multi-division fixture in the database. "
             "Run: flask --app wsgi seed-multidivision")

@@ -6,8 +6,16 @@ import { apiFetch } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import Spinner from '../../components/Spinner'
 import PaywallGate from '../../components/PaywallGate'
-import { useEntitlement } from '../../hooks/useEntitlement'
 import { parseLocalDate, startOfToday } from '../../utils/date'
+
+// All events, split into Upcoming / Previous tabs; promoters can create one
+// (optionally with a new venue) from here.
+
+/** "Phoenix Centre — Andover", falling back to the name when no town is set. */
+function venueLabel(v) {
+  const where = [v.city, v.address].filter(Boolean)[0]
+  return where ? `${v.name} — ${where}` : v.name
+}
 
 /**
  * Split events into what is still to come and what has already happened.
@@ -17,12 +25,6 @@ import { parseLocalDate, startOfToday } from '../../utils/date'
  * promoter has announced them without fixing a date, so they have not happened
  * yet, and burying them in the past is how they get forgotten.
  */
-/** "Phoenix Centre — Andover", falling back to the name when no town is set. */
-function venueLabel(v) {
-  const where = [v.city, v.address].filter(Boolean)[0]
-  return where ? `${v.name} — ${where}` : v.name
-}
-
 function splitByDate(events) {
   const today = startOfToday()
   const upcoming = [], previous = []
@@ -41,6 +43,7 @@ function splitByDate(events) {
   return { upcoming, previous }
 }
 
+/** The status chip for an event: TBD, Today, Past or Upcoming. */
 function eventStatus(dateStr) {
   const d = parseLocalDate(dateStr)
   if (!d) return { label: 'TBD', cls: 'status-upcoming' }
@@ -53,7 +56,6 @@ function eventStatus(dateStr) {
 export default function EventsList() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { canWrite } = useEntitlement()
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   // Upcoming first: the common question is "what's next", not "what happened".
@@ -61,9 +63,8 @@ export default function EventsList() {
   // '' = no venue, 'new' = fill in a new one, otherwise an existing venue id.
   const [venueMode, setVenueMode] = useState('')
 
-  // Role eligibility and current entitlement, kept apart — see GymsList.
+  // Who may create events. The subscription check is done by <PaywallGate>.
   const roleCanCreate = ['promoter', 'admin'].includes(user?.role)
-  const canCreate = roleCanCreate && canWrite
 
   const { data: eventsData, isLoading } = useQuery({
     queryKey: ['events'],

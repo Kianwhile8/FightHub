@@ -3,14 +3,9 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { SPORTS, SPORT_LABEL, rememberSport } from '../constants/sports'
 
 /**
- * Discipline switcher, rendered by each sport-scoped page rather than by the
- * shell.
- *
- * Living in the page is what keeps the control honest: it appears on Fighters,
- * Rankings, History and the Dashboard — the pages whose content is actually
- * per-discipline — and nowhere else. Events, Gyms, Profile and Admin span all
- * disciplines, so a switcher there changed a global-looking setting that those
- * pages then ignored.
+ * Discipline switcher. Rendered only by the per-sport pages (Dashboard,
+ * Fighters, Rankings, History); Events, Gyms, Profile and Admin span every
+ * sport and have no switcher.
  *
  * Pass `title` to render the page heading alongside it, so the reading order is
  * "Fighters · MMA" rather than a heading and an unattached row of buttons.

@@ -1,3 +1,15 @@
+"""Admin-only routes, under /api/admin/...
+
+  GET    /users                                every account + its entitlement
+  PUT    /users/<id>/role                      change role
+  DELETE /users/<id>                           erase an account immediately
+  POST   /users/<id>/subscription/grant        comp an account (optionally for N days)
+  POST   /users/<id>/subscription/revoke       withdraw a comp
+  GET    /billing/events                       recent Stripe webhook deliveries
+  GET    /deletion-requests                    erasure queue (?status=, default pending)
+  POST   /deletion-requests/<id>/complete|reject
+"""
+
 from flask import Blueprint, jsonify, request, current_app
 from ..helpers import err, current_user, roles_required, clean_str
 from ..validation import clean_int
@@ -9,9 +21,8 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 @admin_bp.route("/users", methods=["GET"])
 @roles_required("admin")
 def list_users():
+    """Every account, plus {user_id: entitlement} fetched in one query."""
     users = current_app.auth_db.get_all_users()
-    # One query for every user's entitlement, not one per row: the admin page
-    # shows a state badge on each line.
     return jsonify({
         "users": users,
         "entitlements": current_app.billing_db.summary_for_users(users),
@@ -21,6 +32,7 @@ def list_users():
 @admin_bp.route("/users/<int:user_id>/role", methods=["PUT"])
 @roles_required("admin")
 def update_role(user_id):
+    """Body: {"role": "fighter" | "coach" | "promoter" | "admin"}."""
     data = request.get_json(silent=True) or {}
     if "role" not in data:
         return err("Missing field: role")
@@ -34,6 +46,7 @@ def update_role(user_id):
 @admin_bp.route("/users/<int:user_id>", methods=["DELETE"])
 @roles_required("admin")
 def delete_user(user_id):
+    """Erase an account now (admins cannot delete themselves)."""
     if user_id == current_user()["id"]:
         return err("Cannot delete your own account.")
     try:
@@ -71,12 +84,8 @@ def grant_subscription(user_id):
 @admin_bp.route("/users/<int:user_id>/subscription/revoke", methods=["POST"])
 @roles_required("admin")
 def revoke_subscription(user_id):
-    """Withdraw a complimentary grant.
-
-    Refuses when the account's access comes from a live Stripe subscription —
-    clearing it here without cancelling at Stripe would keep taking their money
-    while denying them the product. The service explains where to go instead.
-    """
+    """Withdraw a comp. Refused if the account is on a live Stripe
+    subscription (see BillingService.revoke_comp)."""
     try:
         return jsonify({
             "subscription": current_app.billing_db.revoke_comp(user_id),
@@ -88,11 +97,8 @@ def revoke_subscription(user_id):
 @admin_bp.route("/billing/events", methods=["GET"])
 @roles_required("admin")
 def list_billing_events():
-    """Recent Stripe webhook deliveries.
-
-    Small and cheap, and the difference between "a payment silently failed to
-    apply" being a mystery and being a line on a page.
-    """
+    """The 50 most recent Stripe webhook deliveries (optionally ?status=),
+    for diagnosing payments that did not apply."""
     status = clean_str(request.args.get("status"))
     query = WebhookEvent.query
     if status:
@@ -118,8 +124,8 @@ def list_deletion_requests():
 def resolve_deletion_request(request_id, action):
     """Complete or reject one request.
 
-    Completing it erases the account — irreversible, and the reason the queue
-    exists rather than a button on the user's own profile.
+    Completing it erases the account, irreversibly. Rejecting requires a
+    note giving the reason.
     """
     if action not in ("complete", "reject"):
         return err("Action must be 'complete' or 'reject'.", 404)

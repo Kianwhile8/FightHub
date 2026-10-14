@@ -1,9 +1,15 @@
-// The CSRF token is tied to the session cookie, so it stops being valid
-// whenever the session is replaced — most obviously on sign-out, which clears
-// the session server-side and invalidates the token this module is holding.
-// Every mutating request therefore retries once with a fresh token before it
-// gives up, otherwise signing out and straight back in would fail on a stale
-// token and the only way through would be a manual page refresh.
+// Every API call in the app goes through apiFetch (JSON) or apiUpload (files).
+//
+// They handle, in one place:
+//   - CSRF: mutating requests send X-CSRFToken. The token is tied to the
+//     session, so it goes stale when the session changes (e.g. sign-out and
+//     back in); on a CSRF failure the request is retried once with a fresh one.
+//   - 402 Payment Required: the new entitlement is pushed into the store, so
+//     every page switches to read-only at once.
+//   - 401 Unauthorized: the session expired, so sign out and go to /login.
+//   - 429 Too Many Requests: turned into a "try again in N" message.
+// Any other failure throws an Error carrying the server's `error` message.
+
 let _csrf = null
 
 async function getCsrf(force = false) {
@@ -47,6 +53,16 @@ export function setApiHandlers({ onPaymentRequired, onUnauthorized } = {}) {
   if (onUnauthorized) _onUnauthorized = onUnauthorized
 }
 
+/** The Error thrown for a 402, after updating the stored entitlement. */
+function paymentRequiredError(data) {
+  _onPaymentRequired?.(data.entitlement)
+  const e = new Error(data?.error || 'That needs an active subscription.')
+  e.paymentRequired = true
+  e.entitlement = data.entitlement
+  return e
+}
+
+/** POST one file as multipart/form-data under the field name "file". */
 export async function apiUpload(path, file) {
   const send = async (csrf) => {
     const fd = new FormData()
@@ -67,19 +83,18 @@ export async function apiUpload(path, file) {
     res = await send(await getCsrf(true))
     data = await parseBody(res)
   }
-  // Event and gym photos are gated the same as any other write, so uploads get
-  // the same 402 treatment as apiFetch.
-  if (res.status === 402 && data?.payment_required) {
-    _onPaymentRequired?.(data.entitlement)
-    const e = new Error(data?.error || 'That needs an active subscription.')
-    e.paymentRequired = true
-    e.entitlement = data.entitlement
-    throw e
-  }
+  if (res.status === 402 && data?.payment_required) throw paymentRequiredError(data)
   if (!res.ok) throw new Error(data?.error || 'Upload failed')
   return data
 }
 
+/**
+ * fetch() wrapper for the JSON API. Returns the parsed body, or throws an
+ * Error whose message is safe to show the user.
+ *
+ *   apiFetch('/api/events')
+ *   apiFetch('/api/gyms', { method: 'POST', body: JSON.stringify({ name }) })
+ */
 export async function apiFetch(path, opts = {}) {
   const method = (opts.method || 'GET').toUpperCase()
   const mutating = MUTATING.includes(method)
@@ -106,28 +121,15 @@ export async function apiFetch(path, opts = {}) {
 
   if (res.status === 204) return null
   if (!res.ok) {
-    // 402 means the account is out of subscription, not that the request was
-    // wrong. The server sends the current entitlement back with the refusal, so
-    // pushing it into the store here flips every mounted page to read-only
-    // immediately rather than on the next /api/auth/me.
-    if (res.status === 402 && data?.payment_required) {
-      _onPaymentRequired?.(data.entitlement)
-      const e = new Error(data?.error || 'That needs an active subscription.')
-      e.paymentRequired = true
-      e.entitlement = data.entitlement
-      throw e
-    }
-    // The 8-hour session expired mid-use. Until now this surfaced as a bare
-    // "Login required." toast on whatever page the user was on, with nothing
-    // bouncing them anywhere — so every subsequent query failed the same way.
-    // /api/auth/me is excluded because a 401 there is the normal answer for a
-    // visitor who is simply not signed in.
+    // Out of subscription (not a bad request).
+    if (res.status === 402 && data?.payment_required) throw paymentRequiredError(data)
+    // Session expired mid-use. /api/auth/me is excluded: a 401 there just
+    // means a visitor who is not signed in.
     if (res.status === 401 && path !== '/api/auth/me') {
       _onUnauthorized?.()
       throw new Error('Your session has expired. Please sign in again.')
     }
-    // 429 carries Retry-After; turning it into plain words saves every call
-    // site from having to.
+    // Rate limited: turn Retry-After into plain words.
     if (res.status === 429) {
       const secs = Number(res.headers.get('Retry-After'))
       const wait = Number.isFinite(secs) && secs > 0

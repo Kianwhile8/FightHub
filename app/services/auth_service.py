@@ -1,7 +1,18 @@
-"""AuthService — same external interface as the old SQLite authDB class,
-backed by SQLAlchemy. Blueprints continue to call current_app.auth_db.*
-unchanged."""
+"""AuthService: accounts, gyms, privacy and account deletion.
 
+One instance is attached to the app as `current_app.auth_db` (see
+app/__init__.py). Methods return plain dicts (via `Model.to_dict()`) and raise
+ValueError for anything the caller should show to the user.
+
+Sections:
+  - users          register, login, roles, fighter-profile linking
+  - deletion       erasure requests and the erasure itself
+  - privacy        hiding a fighter's record
+  - gyms           create / update / delete, ownership checks
+  - admin seeding  seed_admin()
+"""
+
+import os
 from datetime import datetime
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
@@ -9,7 +20,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from ..extensions import db
 from ..legal import TERMS_VERSION, PRIVACY_VERSION
-from ..constants import ENGLISH_COUNTIES
+from ..constants import ENGLISH_COUNTIES, VALID_SPORTS
 from ..validation import clean_email, clean_password, clean_str
 from ..models.user import User
 from ..models.gym import Gym
@@ -18,8 +29,6 @@ from ..models.fight import FightHistory
 from ..models.deletion_request import DeletionRequest
 
 VALID_ROLES  = ("fighter", "coach", "promoter", "admin")
-# Must match VALID_SPORTS in helpers.py and ck_fighters_sport in the database.
-VALID_SPORTS = ("kickboxing", "mma", "boxing", "muaythai")
 # Must match ck_users_gender. Wider than the fighter profile's own vocabulary:
 # an account may decline to answer, a competitive division may not.
 VALID_USER_GENDERS = ("male", "female", "undisclosed")
@@ -47,27 +56,25 @@ class AuthService:
     def register(self, email: str, password: str, role: str,
                  fighter_id: int = None, fighter_sport: str = None,
                  accept_terms: bool = False, gender: str = None) -> dict:
+        """Create an account and its subscription row in one transaction.
+
+        All checks live here rather than in the route, because every way of
+        creating an account (sign-up form, CLI seeder, import scripts) passes
+        through this method.
+        """
         if role not in VALID_ROLES:
             raise ValueError(f"Invalid role '{role}'.")
-        # Bounds and shape are checked here, at the chokepoint every account
-        # creation passes through — the CLI seeder and any future import script
-        # included — rather than in the route, which only covers the one path.
         email = clean_email(email)
         password = clean_password(password)
         if fighter_sport and fighter_sport not in VALID_SPORTS:
             raise ValueError(f"Invalid sport '{fighter_sport}'.")
         if gender is not None and gender not in VALID_USER_GENDERS:
             raise ValueError("Gender must be 'male', 'female' or 'undisclosed'.")
-        # Only fighters are asked, so only fighters are recorded. Dropping it
-        # here rather than relying on the form not to show the field means a
-        # gender posted directly for a coach or promoter is discarded instead
-        # of stored: the rule is that we do not hold data we have no use for,
-        # and a rule enforced only in the UI is not enforced.
+        # Gender is only collected for fighters. Discard it for other roles even
+        # if posted directly, so we never store data we have no use for.
         if role != "fighter":
             gender = None
-        # Checked here rather than only in the blueprint so that no code path
-        # can create an account without a consent record — the CLI seeder and
-        # any future import script go through this method too.
+        # No account may exist without a consent record.
         if not accept_terms:
             raise ValueError("You must accept the terms and privacy notice to create an account.")
         now = datetime.utcnow()
@@ -88,12 +95,9 @@ class AuthService:
         )
         db.session.add(user)
         try:
-            # Flush, not commit: this assigns user.id so the subscription row can
-            # reference it, while leaving both inserts in one transaction. A user
-            # must never exist without an entitlement row — otherwise their
-            # entitlement depends on whichever request happens to self-heal it
-            # first, and a crash between two commits would leave an account that
-            # has neither a trial nor a subscription.
+            # Flush, not commit: this assigns user.id so the subscription row
+            # can reference it, while keeping both inserts in one transaction.
+            # A user must never exist without a subscription row.
             db.session.flush()
             # Administrators never pay, so their row is comped from the start
             # rather than running a trial that will never be looked at.
@@ -113,19 +117,16 @@ class AuthService:
             raise ValueError("An account with that email already exists.")
         return user.to_dict()
 
-    # One message for both failure modes. Saying "no account found with that
-    # address" confirms which addresses are registered, which turns the login
-    # form into a membership oracle — usable to check whether a named person
-    # competes, and to build a target list for credential stuffing. The rate
-    # limit caps how fast that can be done; it does not stop it leaking.
+    # One message for both "no such email" and "wrong password". Distinct
+    # messages would let anyone check which email addresses have accounts.
     _LOGIN_FAILED = "Email or password is incorrect."
 
     def login(self, email: str, password: str) -> dict:
+        """Return the user dict for valid credentials, else raise ValueError."""
         user = User.query.filter_by(email=email.strip().lower()).first()
         if not user:
-            # Verify against a throwaway hash so a missing account costs about
-            # the same time as a wrong password. Without it the timing
-            # difference hands back the answer the message above withholds.
+            # Hash anyway so a missing account takes as long as a wrong
+            # password; otherwise response timing would reveal which it was.
             check_password_hash(_dummy_hash(), password)
             raise ValueError(self._LOGIN_FAILED)
         if not check_password_hash(user.password_hash, password):
@@ -135,11 +136,9 @@ class AuthService:
     def accept_terms(self, user_id: int) -> dict:
         """Record agreement to the current terms and privacy notice.
 
-        Used when either document is re-issued: its version constant moves
-        ahead of the stored value and the user is asked again on their next
-        sign-in. Both are recorded together because both are presented
-        together — there is no path through the UI that shows one without the
-        other.
+        Called when either document is re-issued (its version in app/legal.py
+        moves ahead of the user's stored one). Both are recorded together
+        because the UI always presents them together.
         """
         user = db.session.get(User, user_id)
         if not user:
@@ -153,14 +152,17 @@ class AuthService:
         return user.to_dict()
 
     def get_by_id(self, user_id: int) -> dict | None:
+        """The user as a dict, or None."""
         user = db.session.get(User, user_id)
         return user.to_dict() if user else None
 
     def get_all_users(self) -> list[dict]:
+        """Every account, newest first (admin panel)."""
         return [u.to_dict() for u in
                 User.query.order_by(User.created_at.desc()).all()]
 
     def update_role(self, user_id: int, new_role: str) -> dict:
+        """Change an account's role (admin only — enforced by the route)."""
         if new_role not in VALID_ROLES:
             raise ValueError(f"Invalid role '{new_role}'.")
         user = db.session.get(User, user_id)
@@ -223,36 +225,26 @@ class AuthService:
     def delete_user(self, user_id: int) -> None:
         """Erase an account and everything personal attached to it.
 
-        Explicit rather than left to database cascades, because two things have
-        to happen that no cascade would do:
+        Steps, in order (database cascades cannot do the first three):
 
-        * `FightHistory.opponent_name` is a plain string, so the FK's ON DELETE
-          SET NULL clears the link and leaves the name behind. It has to be
-          overwritten first, or deleting an account would publish exactly the
-          name it was meant to remove.
-        * Uploaded photographs live in object storage, not in the database, so
-          nothing in the schema knows to remove them.
+        1. Cancel any live Stripe subscription. The subscription row is deleted
+           with the user, so after this point nothing would know to stop Stripe
+           charging.
+        2. Overwrite this fighter's name on other people's fight history.
+           `opponent_name` is plain text, so the FK's SET NULL would leave the
+           name behind.
+        3. Delete uploaded photos from storage.
+        4. Delete the fighter profiles and the user (cascades handle the rest).
 
-        * A live Stripe subscription has to be cancelled first. The
-          `subscriptions` row cascades away with the user, so without this Stripe
-          would carry on charging somebody whose data has just been erased —
-          both a billing fault and a UK GDPR one, and invisible from here
-          afterwards because the row that named the subscription is gone.
-
-        What deliberately survives: the bout rows themselves, anonymised, since
-        a result belongs to both fighters and erasing it would rewrite someone
-        else's record; and the deletion_requests audit row, whose foreign key
-        is SET NULL for that reason.
+        What survives on purpose: other fighters' bout rows (anonymised, since
+        a result belongs to both fighters) and the deletion_requests audit row.
         """
         user = db.session.get(User, user_id)
         if not user:
             raise ValueError(f"User {user_id} not found.")
 
-        # Before the delete, while the subscription id is still readable. Logged
-        # and continued on failure, exactly as _delete_stored_file is: an
-        # erasure request must not be blocked by a Stripe outage. A subscription
-        # left running is recoverable from the Stripe dashboard; a refused
-        # erasure is a compliance failure.
+        # 1. On failure, log loudly and carry on: a Stripe outage must not block
+        # an erasure. A subscription left running can be cancelled by hand.
         try:
             current_app.billing_db.cancel_stripe_subscription(user_id)
         except Exception:
@@ -262,16 +254,17 @@ class AuthService:
 
         fighter_ids = self.owned_fighter_ids(user_id)
 
-        # Anonymise before deleting, while the ids still resolve.
+        # 2. Anonymise before deleting, while the ids still resolve.
         if fighter_ids:
             FightHistory.query.filter(
                 FightHistory.opponent_id.in_(fighter_ids)
             ).update({"opponent_name": self.ANONYMISED_OPPONENT},
                      synchronize_session=False)
 
-        # Photographs: the account avatar, and any photo on a fighter profile.
+        # 3. The account avatar.
         self._delete_stored_file(user.profile_picture)
 
+        # 4. Profiles, then the account.
         for fid in fighter_ids:
             fighter = db.session.get(Fighter, fid)
             if fighter:
@@ -286,10 +279,8 @@ class AuthService:
     def _delete_stored_file(filename: str | None) -> None:
         """Remove an uploaded file, tolerating one that has already gone.
 
-        A storage failure must not abort an erasure that is otherwise complete:
-        the database is the record of who exists, and leaving the account in
-        place because an orphaned image could not be reached would be the worse
-        outcome. It is logged instead so it can be cleaned up.
+        A storage failure is logged, not raised, so it never aborts an erasure
+        that is otherwise complete. The orphaned file can be cleaned up later.
         """
         if not filename:
             return
@@ -297,7 +288,6 @@ class AuthService:
             from .storage import get_storage
             get_storage().delete(filename)
         except Exception:
-            from flask import current_app
             current_app.logger.warning(
                 "could not delete stored file %r during account erasure", filename)
 
@@ -314,9 +304,8 @@ class AuthService:
                          reason: str = None) -> dict:
         """Open an erasure request, after re-checking the password.
 
-        The password is asked for again because this is the one action on the
-        platform that cannot be undone by the person it happens to. An
-        unattended session should not be enough to destroy someone's record.
+        The password is asked for again because erasure cannot be undone, and
+        an unattended logged-in session should not be enough to trigger it.
         """
         user = db.session.get(User, user_id)
         if not user:
@@ -325,9 +314,8 @@ class AuthService:
             raise ValueError("Password is incorrect.")
         if self.get_deletion_request(user_id):
             raise ValueError("A deletion request is already pending for this account.")
-        # An administrator who deleted their own account could leave the
-        # platform with nobody able to operate it — including nobody able to
-        # action anyone else's deletion request.
+        # Admins can't self-delete: the last admin leaving would leave nobody
+        # able to process anyone else's deletion request.
         if user.role == "admin":
             raise ValueError(
                 "Administrator accounts cannot be deleted through this form. "
@@ -356,6 +344,7 @@ class AuthService:
         db.session.commit()
 
     def list_deletion_requests(self, status: str = None) -> list[dict]:
+        """Requests for the admin queue, optionally filtered by status."""
         q = DeletionRequest.query
         if status:
             q = q.filter_by(status=status)
@@ -382,12 +371,12 @@ class AuthService:
             raise ValueError("A reason is required when refusing a deletion request.")
 
         if action == "complete":
+            # user_id is None if the account has already gone; the request is
+            # still marked completed below so the audit trail is closed.
             if req.user_id:
-                # Resolve the request first so the audit row is written even if
-                # the account has somehow gone already.
                 self.delete_user(req.user_id)
-            # delete_user commits, and the FK's SET NULL has already cleared
-            # req.user_id — so reload before writing the outcome.
+            # delete_user commits, and the FK's SET NULL has cleared
+            # req.user_id, so reload before writing the outcome.
             req = db.session.get(DeletionRequest, request_id)
             req.status = "completed"
         else:
@@ -400,6 +389,7 @@ class AuthService:
         return req.to_dict()
 
     def change_password(self, user_id: int, old_password: str, new_password: str) -> None:
+        """Set a new password after checking the current one."""
         new_password = clean_password(new_password, field="New password")
         user = db.session.get(User, user_id)
         if not user:
@@ -409,7 +399,10 @@ class AuthService:
         user.password_hash = generate_password_hash(new_password)
         db.session.commit()
 
+    # ── privacy ────────────────────────────────────────────────────────────
+
     def update_privacy(self, user_id: int, hide_record: bool) -> dict:
+        """Turn record hiding on or off for every profile this user owns."""
         user = db.session.get(User, user_id)
         if not user:
             raise ValueError(f"User {user_id} not found.")
@@ -420,9 +413,8 @@ class AuthService:
     def get_hidden_fighter_ids(self, sport: str) -> set:
         """Fighter ids in `sport` whose owner has hidden their record.
 
-        Covers every profile the user owns rather than only their active one —
-        now that one account can hold a profile in several disciplines, a single
-        privacy switch that only hid one of them would leak the rest.
+        Covers every profile the user owns, not just their active one, since
+        one account can hold profiles in several sports.
         """
         hidden_users = [u.id for u in User.query.filter_by(hide_record=True).all()]
         ids = set()
@@ -445,6 +437,7 @@ class AuthService:
 
     def create_gym(self, name: str, coach_id: int, location: str = None,
                    county: str = None) -> dict:
+        """Create a gym owned by `coach_id` (must be a coach or admin)."""
         coach = db.session.get(User, coach_id)
         if not coach:
             raise ValueError(f"User {coach_id} not found.")
@@ -484,6 +477,7 @@ class AuthService:
     def update_gym(self, gym_id: int, coach_id: int,
                    name: str = None, location: str = None,
                    county: str = None) -> dict:
+        """Update the given fields. `None` leaves a field unchanged."""
         gym = self._assert_gym_owner(gym_id, coach_id)
         if name:
             gym["_obj"].name = self._clean_gym_name(name)
@@ -510,6 +504,7 @@ class AuthService:
         return county
 
     def update_profile_picture(self, user_id: int, filename: str) -> dict:
+        """Point the account avatar at an already-stored upload."""
         user = db.session.get(User, user_id)
         if not user:
             raise ValueError(f"User {user_id} not found.")
@@ -523,6 +518,11 @@ class AuthService:
         db.session.commit()
 
     def _assert_gym_owner(self, gym_id: int, coach_id: int) -> dict:
+        """Raise ValueError unless `coach_id` owns the gym or is an admin.
+
+        Returns the gym as a dict, plus the live model under the "_obj" key so
+        callers can modify it.
+        """
         gym = db.session.get(Gym, gym_id)
         if not gym:
             raise ValueError(f"Gym {gym_id} not found.")
@@ -534,9 +534,10 @@ class AuthService:
         d["_obj"] = gym
         return d
 
-    # Passwords that must never guard the account that can delete anyone's
-    # data. Not a general password policy — a floor under the one credential
-    # that gets planted automatically by a deploy script and then forgotten.
+    # ── admin seeding ──────────────────────────────────────────────────────
+
+    # Refused as ADMIN_PASSWORD. Not a general password policy — a floor under
+    # the one credential that a deploy script sets up and is easily forgotten.
     _WEAK_ADMIN_PASSWORDS = frozenset({
         "admin", "admin123", "password", "password1", "password123",
         "letmein", "changeme", "fighthub", "fighthub1", "nimda", "nimda321",
@@ -545,7 +546,10 @@ class AuthService:
     })
 
     def seed_admin(self) -> None:
-        import os
+        """Create the admin from ADMIN_EMAIL / ADMIN_PASSWORD if none exists.
+
+        Prints what it did rather than raising, because it runs at startup.
+        """
         if User.query.filter_by(role="admin").first():
             print("[AUTH] Admin account already exists — nothing to seed.")
             return
@@ -554,9 +558,7 @@ class AuthService:
         if not email or not password:
             print("[AUTH] No admin seeded — set ADMIN_EMAIL and ADMIN_PASSWORD in .env.")
             return
-        # Refuse rather than warn. A warning printed during a container start
-        # is a warning nobody reads, and the result would be a live
-        # administrator account on a guessable password.
+        # Refuse rather than warn: nobody reads warnings printed at startup.
         if password.strip().lower() in self._WEAK_ADMIN_PASSWORDS:
             print("[AUTH] Admin NOT seeded: ADMIN_PASSWORD is a well-known weak "
                   "password. Set a strong one and run the seeder again.")
@@ -566,9 +568,8 @@ class AuthService:
                   "characters. This account can read and erase every user's data.")
             return
         try:
-            # The operator running the seeder is the one agreeing, on their own
-            # behalf — this account is created by whoever controls the deploy,
-            # not by a visitor filling in the sign-up form.
+            # The operator running the seeder accepts the terms on their own
+            # behalf.
             self.register(email=email, password=password, role="admin",
                           accept_terms=True)
         except ValueError as e:

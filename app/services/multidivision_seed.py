@@ -202,6 +202,12 @@ OUTSIDERS = [
 
 
 class MultiDivisionSeeder:
+    """Builds the cross-division fixture described in the module docstring.
+
+    Use `MultiDivisionSeeder().run()` (or `flask seed-multidivision`). Rows are
+    tracked in demo_records like DemoSeeder's.
+    """
+
     def __init__(self, run_id: str = None):
         self.run_id = run_id or uuid.uuid4().hex[:12]
         self.rng = random.Random(SEED)
@@ -211,6 +217,7 @@ class MultiDivisionSeeder:
     # ── manifest ──────────────────────────────────────────────────────────
 
     def _track(self, entity: str, entity_id: int) -> int:
+        """Record a created row against this run, and count it."""
         db.session.add(DemoRecord(run_id=self.run_id, entity=entity,
                                   entity_id=entity_id, created_at=datetime.utcnow()))
         self.counts[entity] = self.counts.get(entity, 0) + 1
@@ -219,6 +226,7 @@ class MultiDivisionSeeder:
     # ── build ─────────────────────────────────────────────────────────────
 
     def run(self) -> dict:
+        """Create the whole fixture in one transaction. Returns run_id and counts."""
         gyms    = self._gyms(self._coach())
         owners  = self._owners()
         self._fighters(gyms, owners)
@@ -243,6 +251,7 @@ class MultiDivisionSeeder:
         return u
 
     def _gyms(self, coach: User) -> list:
+        """One Gym per entry in GYMS."""
         out = []
         for name, town, county in GYMS:
             g = Gym(name=f"{name} (multi-div)", location=town, county=county,
@@ -275,6 +284,10 @@ class MultiDivisionSeeder:
         return owners
 
     def _fighters(self, gyms: list, owners: dict) -> None:
+        """Create a Fighter (and empty record) for every spec in FIGHTERS.
+
+        Fills `self.by_key` so later steps can look fighters up by spec key.
+        """
         today = date.today()
         for i, spec in enumerate(FIGHTERS):
             gym = gyms[i % len(gyms)]
@@ -394,6 +407,7 @@ class MultiDivisionSeeder:
     # ── declared experience ───────────────────────────────────────────────
 
     def _prior_experience(self) -> None:
+        """Add the declared (PriorExperience) records listed in each spec."""
         today = date.today()
         for spec in FIGHTERS:
             if not spec["prior"]:

@@ -59,6 +59,12 @@ SPORT_GYM = {
 
 
 class DemoSeeder:
+    """Builds one demo run. Use `DemoSeeder().run()` (or `flask seed-demo`).
+
+    Every row created goes through `_track()`, which records it in
+    demo_records under this run's id so `clear_demo()` can remove it.
+    """
+
     def __init__(self, run_id: str = None):
         self.run_id = run_id or uuid.uuid4().hex[:12]
         self.rng = random.Random(SEED)
@@ -67,6 +73,7 @@ class DemoSeeder:
     # ── manifest ──────────────────────────────────────────────────────────
 
     def _track(self, entity: str, entity_id: int) -> int:
+        """Record a created row against this run, and count it."""
         db.session.add(DemoRecord(run_id=self.run_id, entity=entity,
                                   entity_id=entity_id, created_at=datetime.utcnow()))
         self.counts[entity] = self.counts.get(entity, 0) + 1
@@ -75,6 +82,7 @@ class DemoSeeder:
     # ── build ─────────────────────────────────────────────────────────────
 
     def run(self) -> dict:
+        """Create everything in one transaction. Returns run_id and counts."""
         venues   = self._venues()
         coaches  = self._coaches()
         gyms     = self._gyms(coaches)
@@ -85,6 +93,7 @@ class DemoSeeder:
         return {"run_id": self.run_id, "counts": self.counts}
 
     def _venues(self) -> list:
+        """One Venue per entry in VENUES."""
         out = []
         for name, address, city, capacity in VENUES:
             v = Venue(name=f"{name} (demo)", address=address, city=city, capacity=capacity)
@@ -123,6 +132,7 @@ class DemoSeeder:
         return out
 
     def _gyms(self, coaches: list) -> list:
+        """One Gym per entry in GYMS, each owned by one demo coach."""
         out = []
         for (name, town, county), coach in zip(GYMS, coaches):
             g = Gym(name=f"{name} (demo)", location=town, county=county,

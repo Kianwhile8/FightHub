@@ -1,16 +1,16 @@
-"""Server-side copies of vocabularies the frontend also holds.
+"""Fixed vocabularies shared across the backend.
 
-These exist so a value can be *validated*, not merely offered. The county list
-lived only in frontend/src/constants/counties.js, which means it was a menu,
-not a constraint: anything at all could be posted to the county field directly,
-and was stored verbatim.
-
-Keep in step with frontend/src/constants/counties.js. A mismatch surfaces as a
-county the form offers and the server then refuses, so it fails loudly rather
-than silently.
+Several of these are also held by the frontend, for building menus. The server
+copies here are what values are actually validated against, so keep each in
+step with the file named beside it.
 """
 
-# The 48 ceremonial counties of England, as the forms list them.
+# Keep in step with frontend/src/constants/sports.js and the
+# ck_fighters_sport CHECK constraint in models/fighter.py.
+VALID_SPORTS = ("kickboxing", "mma", "boxing", "muaythai")
+
+# The 48 ceremonial counties of England.
+# Keep in step with frontend/src/constants/counties.js.
 ENGLISH_COUNTIES = frozenset({
     'Bedfordshire', 'Berkshire', 'Bristol', 'Buckinghamshire',
     'Cambridgeshire', 'Cheshire', 'City of London', 'Cornwall', 'Cumbria',

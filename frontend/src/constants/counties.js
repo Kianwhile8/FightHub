@@ -1,3 +1,5 @@
+// The county menu. The server validates against its own copy,
+// ENGLISH_COUNTIES in app/constants.py, so keep the two in step.
 export const ENGLISH_COUNTIES = [
   'Bedfordshire', 'Berkshire', 'Bristol', 'Buckinghamshire', 'Cambridgeshire',
   'Cheshire', 'City of London', 'Cornwall', 'Cumbria', 'Derbyshire',

@@ -8,14 +8,13 @@ import Spinner from '../../components/Spinner'
 import PaywallGate from '../../components/PaywallGate'
 import { useEntitlement } from '../../hooks/useEntitlement'
 import { FIGHTER_GENDER_OPTIONS, genderLabel } from '../../constants/gender'
+import { SPORT_LABEL } from '../../constants/sports'
+import { RULESETS, FIGHT_METHODS, RESULT_CLASS } from '../../constants/fights'
+import { BandPill, EloPill, RulesetPill } from '../../components/Pills'
+import { wordCount, MAX_BIO_WORDS } from '../../utils/fighter'
 
-const RESULT_CLASS = { W: 'result-w', L: 'result-l', D: 'result-d' }
-const wordCount = (t) => t ? t.trim().split(/\s+/).filter(Boolean).length : 0
-
-const RULESETS = {
-  kickboxing: ['N-Class', 'C-Class', 'B-Class', 'A-Class', 'Pro-Amateur', 'Pro'],
-  muaythai:   ['Novice', 'C-Class', 'B-Class', 'A-Class', 'Elite', 'Pro'],
-}
+// One fighter's profile: stats, bio, fight history, and (for coaches,
+// promoters and admins) logging a fight, matchmaking and deletion.
 
 export default function FighterDetail() {
   const { sport, id } = useParams()
@@ -28,12 +27,10 @@ export default function FighterDetail() {
   const [descWords, setDescWords]   = useState(0)
   const fid = +id
 
-  // Role eligibility and current entitlement, kept apart: a coach out of
-  // subscription sees a locked button they can act on, while a fighter sees
-  // nothing, because subscribing would not give them this either.
+  // roleCan*: could this role ever do it? can*: can it right now (subscription
+  // active)? A lapsed coach sees locked buttons; a fighter sees none.
   const roleCanManage = ['coach', 'promoter', 'admin'].includes(user?.role)
   const roleCanEdit   = ['coach', 'admin'].includes(user?.role)
-  const canManage = roleCanManage && canWrite
   const canEdit   = roleCanEdit && canWrite
 
   const { data: fighter, isLoading } = useQuery({
@@ -98,7 +95,7 @@ export default function FighterDetail() {
     e.preventDefault()
     const fd = new FormData(e.target)
     const desc = fd.get('description').trim()
-    if (wordCount(desc) > 200) { toast.error('Description must be 200 words or fewer.'); return }
+    if (wordCount(desc) > MAX_BIO_WORDS) { toast.error(`Description must be ${MAX_BIO_WORDS} words or fewer.`); return }
     updateMutation.mutate({ description: desc || null })
   }
 
@@ -117,29 +114,19 @@ export default function FighterDetail() {
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: '.25rem' }}>
               <h1 style={{ margin: 0 }}>{fighter.name}</h1>
-              {fighter.elo_band && (
-                <span className={`band-pill band-${fighter.elo_band.toLowerCase().replace(/\s+/g, '-')}`}>
-                  {fighter.elo_band}
-                </span>
-              )}
-              {fighter.elo !== undefined && (
-                <span className={`elo-pill ${(fighter.elo ?? 0) >= 0 ? 'elo-positive' : 'elo-negative'}`}>
-                  {Math.round(fighter.elo)}
-                </span>
-              )}
+              <BandPill band={fighter.elo_band} />
+              {fighter.elo !== undefined && <EloPill elo={fighter.elo} />}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{sport}</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{SPORT_LABEL[sport] ?? sport}</span>
               {fighter.county && (
                 <span style={{ fontSize: 12, color: 'var(--muted)' }}>· {fighter.county}</span>
               )}
               {fighter.gender
                 ? <span className="gender-pill">{genderLabel(fighter.gender)}</span>
                 : canEdit && (
-                  // Fighters created before the field existed have no gender
-                  // recorded, and without one they are never protected from a
-                  // mixed pairing — so this is offered inline rather than
-                  // buried in an edit form.
+                  // No gender recorded: offer to set it inline, since
+                  // matchmaking needs it to keep pairings same-sex.
                   <select
                     className="gender-set"
                     defaultValue=""
@@ -229,10 +216,7 @@ export default function FighterDetail() {
                 <div className="form-group">
                   <label className="form-label">Method</label>
                   <select name="method">
-                    <option value="Decision">Decision</option>
-                    <option value="KO/TKO">KO / TKO</option>
-                    <option value="Submission">Submission</option>
-                    <option value="DQ">DQ</option>
+                    {FIGHT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
               </div>
@@ -271,12 +255,12 @@ export default function FighterDetail() {
                   onInput={e => setDescWords(wordCount(e.target.value))}
                   style={{ resize: 'vertical' }} autoFocus />
                 <div style={{ fontSize: 11, marginTop: 3,
-                  color: descWords > 200 ? 'var(--danger)' : 'var(--muted)' }}>
-                  {descWords} / 200 words
+                  color: descWords > MAX_BIO_WORDS ? 'var(--danger)' : 'var(--muted)' }}>
+                  {descWords} / {MAX_BIO_WORDS} words
                 </div>
               </div>
               <button type="submit" className="btn btn-primary btn-sm"
-                disabled={updateMutation.isPending || descWords > 200}>
+                disabled={updateMutation.isPending || descWords > MAX_BIO_WORDS}>
                 {updateMutation.isPending ? 'Saving…' : 'Save Bio'}
               </button>
             </form>
@@ -305,13 +289,7 @@ export default function FighterDetail() {
                     {f.event.name}
                   </span>
                 )}
-                {f.ruleset && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, padding: '1px 6px',
-                    background: 'rgba(251,191,36,.1)', border: '1px solid rgba(251,191,36,.3)',
-                    color: 'var(--warn)', borderRadius: 4,
-                  }}>{f.ruleset}</span>
-                )}
+                <RulesetPill ruleset={f.ruleset} />
                 <span style={{ color: 'var(--muted)', fontSize: 12 }}>{f.method}</span>
                 <span style={{ color: 'var(--muted)', fontSize: 12 }}>{f.date}</span>
               </div>

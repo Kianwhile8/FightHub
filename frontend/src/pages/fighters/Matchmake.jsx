@@ -4,6 +4,10 @@ import { apiFetch } from '../../api/client'
 import Spinner from '../../components/Spinner'
 import PaywallGate from '../../components/PaywallGate'
 import { useEntitlement } from '../../hooks/useEntitlement'
+import { SPORT_LABEL } from '../../constants/sports'
+import { recordLabel } from '../../utils/fighter'
+
+// Suggested opponents for one fighter (a paid feature; see PaywallGate below).
 
 export default function Matchmake() {
   const { sport, id } = useParams()
@@ -29,8 +33,8 @@ export default function Matchmake() {
   if (canWrite && isLoading) return <Spinner />
 
   const matches = data?.matches ?? []
-  // Opponents held back because the experience gap was too wide. Without this
-  // note an unproven fighter just sees an empty list and no reason for it.
+  // Opponents held back for too wide an experience gap; shown in the empty
+  // state so the user knows why the list is short.
   const excluded = data?.excluded ?? 0
 
   function scoreClass(score) {
@@ -47,15 +51,13 @@ export default function Matchmake() {
       {fighter && (
         <div className="card" style={{ padding: '.75rem 1.25rem', marginBottom: '1rem' }}>
           <span style={{ fontSize: 14 }}>
-            Matchmaking for <strong>{fighter.name}</strong> · {sport.toUpperCase()} · {fighter.weight_kg}kg
-            {!fighter.record_hidden && ` · ${fighter.wins ?? 0}W ${fighter.losses ?? 0}L`}
+            Matchmaking for <strong>{fighter.name}</strong> · {SPORT_LABEL[sport] ?? sport} · {fighter.weight_kg}kg
+            {!fighter.record_hidden && ` · ${recordLabel(fighter, { draws: false })}`}
           </span>
         </div>
       )}
 
-      {/* The whole results panel, replaced. Matchmaking is what the paid tier
-          is actually for, so this is the one place an upsell belongs in full
-          rather than as a locked button. */}
+      {/* Without a subscription the whole panel becomes an upsell card. */}
       <PaywallGate
         mode="panel"
         title="Opponent suggestions need a subscription"
@@ -82,7 +84,7 @@ export default function Matchmake() {
                 </div>
                 <div className="match-meta">
                   {m.fighter.weight_kg}kg
-                  {!m.fighter.record_hidden && ` · ${m.fighter.wins ?? 0}W ${m.fighter.losses ?? 0}L`}
+                  {!m.fighter.record_hidden && ` · ${recordLabel(m.fighter, { draws: false })}`}
                   {m.transferred_bouts > 0 &&
                     ` · +${m.transferred_bouts} bouts carried from other disciplines`}
                 </div>

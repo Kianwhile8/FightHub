@@ -5,8 +5,9 @@ import Spinner from '../components/Spinner'
 import SportTabs from '../components/SportTabs'
 import { SPORT_LABEL } from '../constants/sports'
 import { parseLocalDate } from '../utils/date'
+import { RESULT_CLASS } from '../constants/fights'
 
-const RESULT_CLASS = { W: 'result-w', L: 'result-l', D: 'result-d' }
+// Every fight in one sport, grouped by month.
 
 const MONTH_FMT = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' })
 
@@ -85,9 +86,7 @@ export default function History() {
                     </span>
                   )}
                   <span style={{ color: 'var(--muted)', fontSize: 12, flexShrink: 0 }}>{f.method}</span>
-                  {/* The month is already the heading, so the row only needs the
-                      day — repeating the full date on every line is what made
-                      the old list hard to scan. */}
+                  {/* The month is the heading, so rows show only the day. */}
                   <span className="history-day">{dayLabel(f.date)}</span>
                 </div>
               ))}
@@ -98,6 +97,7 @@ export default function History() {
   )
 }
 
+/** "18 Sept" — the day within the month heading. */
 function dayLabel(dateStr) {
   const d = parseLocalDate(dateStr)
   if (!d) return dateStr || '—'

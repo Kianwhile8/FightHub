@@ -5,14 +5,9 @@ from ..extensions import db
 class DemoRecord(db.Model):
     """A single row created by the demo seeder.
 
-    The seeder writes into the same tables as real use, so "delete the demo
-    data" cannot be expressed as a query over those tables — there is nothing
-    in a demo gym that distinguishes it from a real one, and guessing by name
-    or creation date would eventually delete somebody's actual gym.
-
-    So every insert is recorded here, and `clear-demo` deletes exactly these
-    rows and nothing else. Real data is untouchable by construction rather
-    than by careful filtering.
+    Demo data lives in the same tables as real data and looks identical, so
+    every row the seeder inserts is recorded here. `clear-demo` deletes
+    exactly these rows and nothing else, so real data is never touched.
     """
 
     __tablename__ = "demo_records"

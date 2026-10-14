@@ -1,8 +1,11 @@
+"""Events, venues, fight-card bouts and event registrations."""
+
 from datetime import datetime
 from ..extensions import db
 
 
 class Venue(db.Model):
+    """Where an event is held."""
     __tablename__ = "venues"
 
     id       = db.Column(db.Integer, primary_key=True)
@@ -24,6 +27,7 @@ class Venue(db.Model):
 
 
 class Event(db.Model):
+    """A promoter's event. Its bouts and registrations are linked by event_id."""
     __tablename__ = "events"
 
     id          = db.Column(db.Integer, primary_key=True)
@@ -38,9 +42,7 @@ class Event(db.Model):
     # How many bouts this card is being built to. The card can be arranged once
     # it is full, so this is what decides when that phase opens.
     max_bouts   = db.Column(db.Integer, nullable=True)
-    # Who set the event up. Nullable because events created before this column
-    # existed have no recorded owner — those fall back to "any promoter", which
-    # is how the whole app behaved until now.
+    # Who set the event up. NULL on older events, which any promoter may edit.
     created_by  = db.Column(
         db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -64,9 +66,12 @@ class Event(db.Model):
 
 
 class EventBout(db.Model):
-    """Fight card bout. event_id is stored as text to stay compatible with the
-    Phase 3 frontend that still generates event IDs client-side. Phase 4 migrates
-    this to a proper FK once the Events API is wired up."""
+    """One bout on an event's fight card.
+
+    `event_id` is a text column, not a foreign key, because early cards used
+    ids generated in the browser. FighterService._event_pk() resolves it to a
+    real Event when there is one.
+    """
 
     __tablename__ = "event_bouts"
 
@@ -94,7 +99,6 @@ class EventBout(db.Model):
     method       = db.Column(db.String(50), nullable=True)
     fight_date   = db.Column(db.String(20), nullable=True)
 
-    # Phase 4: add event_fk_id = db.Column(db.Integer, db.ForeignKey("events.id"))
     fighter_a = db.relationship("Fighter", foreign_keys=[fighter_a_id])
     fighter_b = db.relationship("Fighter", foreign_keys=[fighter_b_id])
 
@@ -120,6 +124,10 @@ class EventBout(db.Model):
 
 
 class EventRegistration(db.Model):
+    """A fighter putting themselves forward for an event, before being booked.
+
+    Removed automatically when the fighter is put on the card (add_bout).
+    """
     __tablename__ = "event_registrations"
     __table_args__ = (
         db.UniqueConstraint("event_id", "fighter_id", name="uq_event_registration"),

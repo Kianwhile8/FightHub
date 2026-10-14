@@ -1,3 +1,5 @@
+"""Billing state: one Subscription row per user, plus the Stripe webhook log."""
+
 from datetime import datetime
 from ..extensions import db
 
@@ -22,28 +24,14 @@ VALID_STATUSES = (
 
 
 class Subscription(db.Model):
-    """One row per user: the single source of truth for whether they may write.
+    """One row per user holding all their billing state: trial, paid period,
+    and any admin comp.
 
-    Trial state lives here rather than on `users` for three reasons.
+    Kept off `users` so all entitlement state is in one place, and so a trial
+    can be reset in testing by deleting this one row.
 
-    First, every piece of entitlement state sits in one row, so a trial, a paid
-    period and an administrator's comp cannot disagree with each other — there
-    is one place to read and one place to write.
-
-    Second, `users` is already the hottest row in the schema. `current_user()`
-    loads it on every single request, and it is already carrying terms, privacy,
-    verification and gender columns. Four more date columns on it would be read
-    constantly and consulted rarely.
-
-    Third, deleting the row is a clean reset. During testing that matters more
-    than it sounds: resetting a trial is `DELETE FROM subscriptions WHERE ...`
-    rather than remembering which of five columns on `users` to put back.
-
-    Nothing here is read directly for gating. `BillingService.entitlement()`
-    computes the answer, and `has_active_access()` in app/helpers.py is the one
-    function that decides. In particular `stripe_price_id` is recorded for
-    audit and never consulted — the price a user should pay is derived from
-    their role server-side, every time.
+    Never read directly to decide access: BillingService.entitlement()
+    computes the answer, and has_active_access() in app/helpers.py applies it.
     """
 
     __tablename__ = "subscriptions"
@@ -69,15 +57,8 @@ class Subscription(db.Model):
         db.ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False, unique=True, index=True,
     )
-    # Reserved, and unused in v1. Billing is per-user today: a gym with three
-    # coaches needs three subscriptions, because a Gym has exactly one coach_id
-    # and there is no gym-membership table to count seats against.
-    #
-    # The column exists now because adding it later would mean a migration on a
-    # table with live billing data, whereas making gym-level seats work from
-    # here is a change to one function — `has_active_access` grows an "or the
-    # gym this coach belongs to has an active plan" branch. Keep it nullable
-    # and keep nothing reading it until that feature is actually built.
+    # Reserved for future gym-level plans; nothing reads it yet. Billing is
+    # per-user today.
     gym_id = db.Column(
         db.Integer,
         db.ForeignKey("gyms.id", ondelete="SET NULL"),
@@ -168,10 +149,8 @@ class WebhookEvent(db.Model):
     duplicate insert fails, and the handler can tell "already done" from "began
     and crashed" by the existing row's status.
 
-    Only a summary of the payload is stored, never the raw event. Raw Stripe
-    events carry the customer's email and billing address, so keeping them
-    would put a new category of personal data into a new table — and drag a
-    retention entry into the privacy notice — for no operational gain.
+    Only a summary of each event is stored, never the raw payload, which
+    contains the customer's email and billing address.
     """
 
     __tablename__ = "billing_events"
@@ -207,4 +186,5 @@ class WebhookEvent(db.Model):
 
 
 def _iso(value):
+    """datetime -> ISO string, passing None through."""
     return value.isoformat() if value else None

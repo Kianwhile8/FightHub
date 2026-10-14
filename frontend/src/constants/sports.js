@@ -1,5 +1,5 @@
 // Single source of truth for the disciplines the UI offers. Must stay in step
-// with VALID_SPORTS in app/helpers.py and the ck_fighters_sport constraint in
+// with VALID_SPORTS in app/constants.py and the ck_fighters_sport constraint in
 // the database — a sport listed here but missing from either is a tab that
 // loads and then fails on the first write.
 export const SPORTS = ['mma', 'boxing', 'kickboxing', 'muaythai']

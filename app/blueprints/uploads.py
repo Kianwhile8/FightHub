@@ -1,7 +1,20 @@
+"""Image uploads and serving.
+
+  GET  /uploads/<filename>            serve any uploaded image
+  POST /api/upload/avatar             the caller's profile picture
+  POST /api/upload/event/<event_id>   event banner   (promoter, admin)
+  POST /api/upload/gym/<gym_id>       gym photo      (owning coach, admin)
+
+Files are stored under a random name by services/storage.py (local disk or
+Cloud Storage); the database holds only that name.
+"""
+
 import uuid
 from flask import Blueprint, jsonify, request, current_app
 from ..helpers import err, login_required, roles_required, subscription_required, current_user
 from ..extensions import db, limiter
+from ..models.event import Event
+from ..models.gym import Gym
 from ..services.storage import get_storage
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
@@ -10,10 +23,15 @@ uploads_bp = Blueprint("uploads", __name__)
 
 
 def _allowed(filename: str) -> bool:
+    """Does the filename have an allowed image extension?"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def _save_upload(file_key: str = 'file') -> tuple:
+    """Store the uploaded file under a random name.
+
+    Returns (filename, None) on success or (None, error_message).
+    """
     f = request.files.get(file_key)
     if not f or not f.filename:
         return None, "No file provided."
@@ -44,11 +62,9 @@ def serve_upload(filename):
 
 @uploads_bp.route("/api/upload/avatar", methods=["POST"])
 @login_required
-# Each accepted request writes up to 5 MB to storage that is billed by the
-# gigabyte and never reclaimed. Ten an hour is far more than anyone changing
-# their photograph needs.
-@limiter.limit("10 per hour")
+@limiter.limit("10 per hour")   # each upload is up to 5 MB of billed storage
 def upload_avatar():
+    """Set the caller's profile picture."""
     filename, error = _save_upload()
     if error:
         return err(error)
@@ -61,9 +77,9 @@ def upload_avatar():
 @roles_required("promoter", "admin")
 @subscription_required
 def upload_event_photo(event_id):
-    # Resolve the target before storing anything — see the note on
-    # upload_gym_photo below.
-    from ..models.event import Event
+    """Set an event's banner image."""
+    # Check the target exists BEFORE storing, so refused requests leave no
+    # orphaned files.
     event = db.session.get(Event, event_id)
     if not event:
         return err("Event not found.", 404)
@@ -79,11 +95,8 @@ def upload_event_photo(event_id):
 @roles_required("coach", "admin")
 @subscription_required
 def upload_gym_photo(gym_id):
-    # Authorise *before* writing to storage. Saving first and refusing second
-    # still leaves the bytes in the bucket: the refusal is correct but the file
-    # is already paid for and orphaned, so any coach could fill the bucket by
-    # repeatedly posting to a gym they do not own.
-    from ..models.gym import Gym
+    """Set a gym's photo (owning coach or admin)."""
+    # Authorise BEFORE storing, so refused requests leave no orphaned files.
     gym = db.session.get(Gym, gym_id)
     if not gym:
         return err("Gym not found.", 404)

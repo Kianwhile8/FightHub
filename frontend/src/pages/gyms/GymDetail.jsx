@@ -8,9 +8,11 @@ import { ENGLISH_COUNTIES } from '../../constants/counties'
 import Spinner from '../../components/Spinner'
 import PaywallGate from '../../components/PaywallGate'
 import { useEntitlement } from '../../hooks/useEntitlement'
+import { RankPill, BandPill, SportBadge } from '../../components/Pills'
+import { recordLabel } from '../../utils/fighter'
 import AddFighterPanel from './AddFighterPanel'
 
-const SPORT_BADGE = { mma: 'badge-mma', boxing: 'badge-box', kickboxing: 'badge-kb' }
+// One gym: details, photo, and its roster across every sport.
 
 export default function GymDetail() {
   const { id } = useParams()
@@ -23,10 +25,8 @@ export default function GymDetail() {
   const [editGym, setEditGym] = useState(false)
   const [addingFighter, setAddingFighter] = useState(false)
 
-  // Every write affordance on this page funnels through canManage, so ANDing
-  // entitlement in here covers edit, delete, the photo upload and the roster
-  // add/remove in one place. The banner at the top of the page says why they
-  // have gone, and /billing says what to do about it.
+  // Every edit control on this page checks canManage (role AND an active
+  // subscription). The server still checks gym ownership on each request.
   const roleCanManage = ['coach', 'admin'].includes(user?.role)
   const canManage = roleCanManage && canWrite
 
@@ -119,8 +119,7 @@ export default function GymDetail() {
           </div>
         </div>
 
-        {/* Shown when the role allows it but the subscription does not, so the
-            controls are not just silently absent. */}
+        {/* Role allows it but the subscription does not: explain, don't just hide. */}
         {roleCanManage && !canWrite && (
           <div className="btn-row">
             <PaywallGate label="Subscribe to manage this gym" />
@@ -210,15 +209,10 @@ export default function GymDetail() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
                     {f.name}
-                    {f.rank && (
-                      <span className={`rank-pill${f.rank <= 3 ? ' rank-pill--podium' : ''}`}
-                        title={`Ranked #${f.rank} in ${f.sport}`}>
-                        #{f.rank}
-                      </span>
-                    )}
+                    <RankPill rank={f.rank} sport={f.sport} />
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {f.record_hidden ? '–' : `${f.wins ?? 0}W ${f.losses ?? 0}L`}
+                    {recordLabel(f, { draws: false })}
                     {f.county && ` · ${f.county}`}
                     <span className="id-pill"
                       title="Fighter ID — share with fighter to link their account"
@@ -227,15 +221,13 @@ export default function GymDetail() {
                     </span>
                   </div>
                 </div>
-                <span className={`badge ${SPORT_BADGE[f.sport] ?? ''}`}>{f.sport}</span>
-                {f.elo_band && <span className={`band-pill band-${(f.elo_band ?? 'amateur').toLowerCase().replace(' ', '-')}`}>{f.elo_band}</span>}
+                <SportBadge sport={f.sport} />
+                <BandPill band={f.elo_band} />
                 {canManage && (
                   <button
                     className="btn btn-danger btn-sm"
                     disabled={removeMutation.isPending}
-                    // The row navigates to the fighter; without this the click
-                    // would remove them and then open the page of the fighter
-                    // just removed.
+                    // stopPropagation: the row itself links to the fighter.
                     onClick={e => {
                       e.stopPropagation()
                       if (window.confirm(`Remove ${f.name} from ${gym.name}? Their record and profile are kept — only the gym link is cleared.`)) {

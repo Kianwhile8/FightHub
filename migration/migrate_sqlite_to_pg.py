@@ -1,10 +1,12 @@
 """migrate_sqlite_to_pg.py
 ------------------------
-One-time migration from the four SQLite files to PostgreSQL.
+LEGACY, one-time migration from the old SQLite files (data/*.db) to
+PostgreSQL. Only needed when moving data from the pre-Postgres version of the
+app; a fresh install does not use it.
 
 Run AFTER `flask db upgrade` has created all tables:
 
-    python -m scripts.migrate_sqlite_to_pg
+    python migration/migrate_sqlite_to_pg.py
 
 Environment variables read from .env:
     DATABASE_URL   — target PostgreSQL connection string
@@ -203,7 +205,7 @@ if __name__ == "__main__":
     if not DATABASE_URL:
         sys.exit("DATABASE_URL not set in .env")
 
-    print(f"Connecting to PostgreSQL...")
+    print("Connecting to PostgreSQL...")
     pg = psycopg2.connect(DATABASE_URL)
     try:
         migrate(pg)

@@ -1,3 +1,8 @@
+// App root: React Query, the router, and the boot-time session check.
+//
+// Routes are split into public pages (landing, login, legal) and a protected
+// group rendered inside <Layout> (sidebar + page). Every page is lazy-loaded.
+
 import { lazy, Suspense, useEffect } from 'react'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -36,25 +41,20 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
 
+// Shows a spinner while a lazy page's code is downloading.
 const Wrap = ({ children }) => <Suspense fallback={<Spinner full />}>{children}</Suspense>
 
 const router = createBrowserRouter([
-  // The public landing page. RootRoute redirects anyone already signed in to
-  // their dashboard, which is what the `index: true` child of the protected
-  // route used to do — so a returning user still never sees this page, and the
-  // lazy Landing chunk is never fetched for them.
+  // Public landing page. RootRoute sends anyone already signed in straight to
+  // their dashboard.
   { path: '/',      element: <RootRoute><Wrap><Landing /></Wrap></RootRoute> },
   { path: '/login', element: <Wrap><Login /></Wrap> },
-  // Outside ProtectedRoute on purpose: someone deciding whether to sign up has
-  // to be able to read these, and they have no account yet. The cookie policy
-  // in particular is linked from the banner, which shows before sign-in.
+  // Legal pages are public: people must be able to read them before signing up.
   { path: '/terms',   element: <Wrap><Terms /></Wrap> },
   { path: '/privacy', element: <Wrap><Privacy /></Wrap> },
   { path: '/cookies', element: <Wrap><Cookies /></Wrap> },
   {
-    // Pathless layout route. It was `path: '/'`, but '/' is now the public
-    // landing page above. With no path of its own the children's paths still
-    // resolve against '/' exactly as before.
+    // Signed-in area. A pathless layout route: children resolve against '/'.
     element: <ProtectedRoute><Layout /></ProtectedRoute>,
     children: [
       { path: ':sport/dashboard',                  element: <Wrap><Dashboard /></Wrap> },
@@ -75,9 +75,8 @@ const router = createBrowserRouter([
   { path: '*', element: <Wrap><NotFound /></Wrap> },
 ])
 
-// Registered once, at module scope, so the handlers are in place before the
-// first request can be made — an /api/auth/me that raced a useEffect would
-// otherwise find them null.
+// How the API client reacts to session-level failures (see api/client.js).
+// Registered at module scope so they exist before the first request is made.
 setApiHandlers({
   onPaymentRequired: (entitlement) => {
     useAuthStore.getState().setEntitlement(entitlement)
@@ -89,6 +88,7 @@ setApiHandlers({
   },
 })
 
+// On first load, ask the server who is signed in. Routes wait for `ready`.
 function AuthInitializer() {
   const { setSession, setReady } = useAuthStore()
   useEffect(() => {

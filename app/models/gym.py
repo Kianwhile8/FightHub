@@ -1,8 +1,11 @@
+"""Gyms."""
+
 from datetime import datetime
 from ..extensions import db
 
 
 class Gym(db.Model):
+    """A gym, owned by one coach (`coach_id`). Fighters belong to a gym."""
     __tablename__ = "gyms"
 
     id         = db.Column(db.Integer, primary_key=True)

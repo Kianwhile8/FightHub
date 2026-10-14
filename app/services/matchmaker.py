@@ -1,18 +1,27 @@
-"""Matchmaking algorithm for FightHub.
+"""Matchmaking algorithm for FightHub. Pure functions, no database access.
 
-Produces a compatibility score between two fighters by combining
-nine weighted factors. ELO is computed fresh from fight history on every call.
+How a match list is produced (entry point: `rank_opponents`):
+
+  1. Cross-sport credit — `experience_credit()` turns a fighter's record in
+     OTHER sports into discounted bouts and a starting Elo for this sport.
+  2. Elo — `compute_elo_for_pool()` replays every fight in the pool in date
+     order. Ratings are recomputed from history on every call, never stored.
+  3. Eligibility — mixed-gender pairings are always dropped; pairings with too
+     wide an experience gap are dropped by `experience_mismatch()`.
+  4. Score — `match_score()` builds a profile for each fighter and combines
+     nine factor scores (each 0..1) using the weights below, giving 0..100.
+
+Tuning knobs are the module-level constants, grouped by section.
 """
 
 from __future__ import annotations
 from datetime import date as _date, timedelta as _timedelta
-from typing import List
 
-# ── ELO configuration ──────────────────────────────────────────────────────
+# ── Elo configuration ──────────────────────────────────────────────────────
 
-elo_start           = 0
-elo_min             = -200
-elo_k               = 24
+elo_start           = 0      # rating of a fighter with no history
+elo_min             = -200   # ratings never fall below this
+elo_k               = 24     # max rating change per fight, before multipliers
 
 # Loss scaling: (actual - expected) is already negative for a loss, so the
 # natural ELO formula gives ~-12 vs equal opponent.  The dampening scales that
@@ -29,14 +38,18 @@ activity_bonus_mult  = 1.15  # win gains 15 % more for active-season fighters
 upset_elo_gap        = 150   # opponent must be this many ELO points higher …
 upset_bonus_mult     = 1.20  # … to earn a 20 % upset bonus on a win
 
+# Display bands, 200 Elo points wide: <200 Amateur, 200-399 Prospect, ...
 ELO_BAND_NAMES = ["Amateur", "Prospect", "Contender", "Regional", "Elite"]
 
 
 def elo_band(elo: float) -> str:
+    """The display band name for a rating."""
     idx = max(0, int(elo // 200))
     return ELO_BAND_NAMES[min(idx, len(ELO_BAND_NAMES) - 1)]
 
 
+# How much a WIN by each method is worth in Elo (losses are not scaled by
+# method). Unknown methods count as 1.0.
 method_multiplier = {
     "ko": 1.5,
     "tko": 1.5,
@@ -47,24 +60,26 @@ method_multiplier = {
 
 
 def _method_multiplier(method) -> float:
+    """Elo multiplier for a win by `method` (see method_multiplier)."""
     if not isinstance(method, str):
         return 1.0
     return method_multiplier.get(method.lower().strip(), 1.0)
 
 
-# ── factor weights (must sum to 1.0) ───────────────────────────────────────
+# ── match-score factor weights (must sum to 1.0) ───────────────────────────
+# Each factor is scored 0..1 by a `_score_*` function further down.
 
-weight_W       = 0.20
-elo_w          = 0.18
-record_w       = 0.12
-form_w         = 0.12
-method_W       = 0.10
-opp_quality_w  = 0.10
-experience_w   = 0.10
-recent_form_w  = 0.05
-age_w          = 0.03
+weight_w       = 0.20   # body weight difference
+elo_w          = 0.18   # rating difference
+record_w       = 0.12   # win-rate difference
+form_w         = 0.12   # recent form + win streak
+method_w       = 0.10   # how impressively they win (KO > decision)
+opp_quality_w  = 0.10   # how often their wins are finishes
+experience_w   = 0.10   # bout-count difference
+recent_form_w  = 0.05   # last five results only
+age_w          = 0.03   # age difference
 
-_weight_sum = (weight_W + elo_w + record_w + form_w + method_W +
+_weight_sum = (weight_w + elo_w + record_w + form_w + method_w +
                opp_quality_w + experience_w + recent_form_w + age_w)
 if abs(_weight_sum - 1.0) >= 1e-9:
     raise ValueError(f"Factor weights must sum to 1.0, got {_weight_sum}")
@@ -72,12 +87,10 @@ if abs(_weight_sum - 1.0) >= 1e-9:
 
 # ── cross-sport experience transfer ──────────────────────────────────────
 
-# How much of a fighter's record in one discipline counts as relevant
-# experience in another. These are judgement calls about shared skills — stance,
-# range, striking defence, ring craft, having been hit hard by a stranger — and
-# they are deliberately asymmetric: a boxer's hands carry a long way into
-# kickboxing, a kickboxer's hands carry less far into pure boxing. Same sport is
-# always 1.0. Tune these first if matchmaking starts producing mismatches.
+# (from_sport, to_sport) -> fraction of a record that counts in the new sport.
+# Judgement calls about shared skills, and deliberately asymmetric: a boxer's
+# hands carry well into kickboxing, a kickboxer's less so into pure boxing.
+# Same sport is always 1.0. Tune these first if matchmaking produces mismatches.
 sport_transfer = {
     ("boxing",     "kickboxing"): 0.60,
     ("boxing",     "muaythai"):   0.50,
@@ -103,18 +116,14 @@ transfer_sports = tuple(sorted({s for pair in sport_transfer for s in pair}))
 transfer_halflife_days = 730
 transfer_floor         = 0.25
 
-# What transfers: bout count, record and rating. What does not: finish rate,
-# recent form and opponent quality. How you finish fights and how sharp you are
-# right now are the most discipline-specific things we measure, so those factors
-# stay native rather than being imported from another sport's history.
+# Only bout count, record and rating transfer. Finish rate, recent form and
+# opponent quality are too sport-specific and are always computed natively.
 
-# ── debut protection ─────────────────────────────────────────────────
-
-# A weighted average can still rank a bad pairing highly when the other factors
-# happen to line up, so an experience mismatch is enforced as a filter rather
-# than left to the weights to express. The tolerated gap scales with experience:
-# a debutant against a 4-bout fighter is a mismatch, a 12-bout fighter against a
-# 16-bout fighter is not.
+# ── debut protection ───────────────────────────────────────────────────────
+# Experience gaps are a hard filter, not just a scoring factor, so a debutant
+# is never offered a seasoned fighter however well the other factors line up.
+# The tolerated gap grows with experience: 0 vs 4 bouts is a mismatch, 12 vs 16
+# is not. See experience_mismatch().
 debut_experience_epsilon = 0.5   # effective bouts below this is a true debut
 debut_max_opponent_bouts = 1.5   # the most a true debutant may be matched with
 experience_ratio_limit   = 2.0   # otherwise: opponent may have this many times …
@@ -122,6 +131,7 @@ experience_gap_allowance = 2.0   # … your bouts, plus this many
 
 
 def transfer_coefficient(from_sport: str, to_sport: str) -> float:
+    """Fraction of a `from_sport` record that counts in `to_sport`."""
     if from_sport == to_sport:
         return 1.0
     return sport_transfer.get((from_sport, to_sport), default_transfer)
@@ -130,10 +140,11 @@ def transfer_coefficient(from_sport: str, to_sport: str) -> float:
 def _transfer_decay(last_bout_date: str | None, as_of: str | None = None) -> float:
     """Recency multiplier on transferred credit.
 
-    An unknown last-bout date returns full credit on purpose. Over-crediting
-    experience only steers a fighter towards tougher opponents, which is the
-    safe direction to be wrong in; under-crediting is what puts a seasoned
-    fighter across from a novice.
+    Halves every `transfer_halflife_days`, never below `transfer_floor`.
+
+    An unknown date gives full credit on purpose: over-crediting only steers a
+    fighter towards tougher opponents, whereas under-crediting could put a
+    seasoned fighter in with a novice.
     """
     if not last_bout_date:
         return 1.0
@@ -193,18 +204,26 @@ def experience_credit(
 
 
 def _no_credit() -> dict:
+    """An experience_credit() result for a fighter with nothing to transfer."""
     return {"wins": 0.0, "losses": 0.0, "draws": 0.0, "bouts": 0.0, "elo_seed": None}
 
 
 def experience_mismatch(a_bouts: float, b_bouts: float) -> bool:
-    """True when the effective-experience gap is too wide for a competitive fight."""
+    """True when the experience gap is too wide for a competitive fight.
+
+    A true debutant (< 0.5 effective bouts) may face at most 1.5 bouts of
+    experience. Otherwise the more experienced side may have up to
+    2x the other's bouts + 2.
+    """
     low, high = sorted((a_bouts, b_bouts))
     if low < debut_experience_epsilon:
         return high > debut_max_opponent_bouts
     return high > low * experience_ratio_limit + experience_gap_allowance
 
 
-# ── ELO helpers ────────────────────────────────────────────────────────────
+# ── Elo helpers ────────────────────────────────────────────────────────────
+# Fight dicts carry "date" as an ISO string, so plain string comparison sorts
+# them chronologically.
 
 def _season_activity(history: list[dict], before_date: str) -> int:
     """Count fights in the 180 days immediately before before_date."""
@@ -219,7 +238,8 @@ def _season_activity(history: list[dict], before_date: str) -> int:
     )
 
 
-def _streak_at_date(history: List[dict], before_date: str) -> int:
+def _streak_at_date(history: list[dict], before_date: str) -> int:
+    """Consecutive wins immediately before `before_date`."""
     past = sorted(
         [h for h in history if h["date"] < before_date],
         key=lambda h: h["date"], reverse=True
@@ -234,16 +254,19 @@ def _streak_at_date(history: List[dict], before_date: str) -> int:
 
 
 def _streak_multiplier(streak: int) -> float:
+    """Extra Elo multiplier for a win while on a streak of 3+ (capped at 1.5)."""
     if streak < 3:
         return 0.0
     return min(0.4 + (streak - 3) * 0.2, 1.5)
 
 
 def _total_bouts(fighter: dict) -> int:
+    """Native bouts in this sport (no cross-sport credit)."""
     return fighter["wins"] + fighter["losses"] + fighter["draws"]
 
 
 def _expected(rating_a: float, rating_b: float) -> float:
+    """Standard Elo expected score of A against B (0..1)."""
     return 1 / (1 + 10 ** ((rating_b - rating_a) / 400))
 
 
@@ -256,6 +279,12 @@ def _build_context_multiplier(
     opp_hist:     list[dict],
     fight_date:   str,
 ) -> float:
+    """Elo multiplier for one fight, given what both fighters had done so far.
+
+    Starts from the method multiplier (wins only), then adjusts for:
+    the fighter's win streak, relative experience, beating an opponent on a
+    streak, and relative win counts. Never below 0.1.
+    """
     is_win  = result.upper() == "W"
     is_loss = result.upper() == "L"
 
@@ -266,10 +295,12 @@ def _build_context_multiplier(
     f_wins  = fighter["wins"]
     o_wins  = opponent["wins"]
 
+    # Riding a win streak.
     if is_win:
         f_streak = _streak_at_date(fighter_hist, fight_date)
         mult += _streak_multiplier(f_streak)
 
+    # More / less experienced opponent.
     if o_total > 0 and f_total > 0:
         if is_win:
             if o_total > f_total:
@@ -280,11 +311,13 @@ def _build_context_multiplier(
             if o_total < f_total:
                 mult -= 0.2
 
+    # Snapping the opponent's win streak.
     if is_win:
         opp_streak = _streak_at_date(opp_hist, fight_date)
         if opp_streak >= 3:
             mult += 0.3
 
+    # Opponent with more / fewer wins.
     if is_win:
         if o_wins > f_wins:
             mult += 0.25
@@ -297,31 +330,26 @@ def _build_context_multiplier(
     return max(0.1, mult)
 
 
-def compute_elo(history: list[dict], all_elos: dict[str, float] | None = None) -> float:
-    if all_elos is None:
-        all_elos = {}
-    rating       = float(elo_start)
-    result_score = {"W": 1.0, "D": 0.5, "L": 0.0}
-    sorted_hist  = sorted(history, key=lambda h: h["date"])
-    for fight in sorted_hist:
-        opp_name   = fight["opponent"]
-        opp_rating = all_elos.get(opp_name, float(elo_start))
-        actual     = result_score.get(fight["result"].upper(), 0.5)
-        expected   = _expected(rating, opp_rating)
-        multiplier = _method_multiplier(fight["method"]) if actual == 1.0 else 1.0
-        change     = elo_k * multiplier * (actual - expected)
-        if change < 0:
-            change *= loss_dampening
-        elif change > 0:
-            active = _season_activity(sorted_hist, fight["date"])
-            if active >= activity_threshold:
-                change *= activity_bonus_mult
-            if (opp_rating - rating) >= upset_elo_gap:
-                change *= upset_bonus_mult
-        change += participation_bonus
-        rating  = max(rating + change, elo_min)
-        all_elos[opp_name] = max(opp_rating - change, elo_min)
-    return round(rating, 2)
+_RESULT_SCORE = {"W": 1.0, "D": 0.5, "L": 0.0}
+
+
+def _rating_change(actual: float, expected: float, multiplier: float,
+                   rating: float, opp_rating: float,
+                   history: list[dict], fight_date: str) -> float:
+    """How much one fight moves the fighter's rating.
+
+    Base Elo change, then: losses are dampened; gains are boosted for an active
+    season and for an upset; everyone gets the participation bonus.
+    """
+    change = elo_k * multiplier * (actual - expected)
+    if change < 0:
+        change *= loss_dampening
+    elif change > 0:
+        if _season_activity(history, fight_date) >= activity_threshold:
+            change *= activity_bonus_mult
+        if (opp_rating - rating) >= upset_elo_gap:
+            change *= upset_bonus_mult
+    return change + participation_bonus
 
 
 def compute_elo_for_pool(
@@ -351,10 +379,11 @@ def compute_elo_for_pool(
             all_fights.append({**fight, "_fighter_id": f["id"], "_fighter_name": f["name"]})
     all_fights.sort(key=lambda h: h["date"])
 
-    seeds        = seeds or {}
-    ratings      = {f["id"]: float(seeds.get(f["id"], elo_start)) for f in fighters}
-    result_score = {"W": 1.0, "D": 0.5, "L": 0.0}
+    seeds   = seeds or {}
+    ratings = {f["id"]: float(seeds.get(f["id"], elo_start)) for f in fighters}
 
+    # Replay every fight in date order. Each fight is processed from the
+    # logging fighter's side; the opponent (if in the pool) moves the other way.
     for fight in all_fights:
         fid      = fight["_fighter_id"]
         opp_name = fight["opponent"]
@@ -369,7 +398,7 @@ def compute_elo_for_pool(
         r_fighter = ratings[fid]
         r_opp     = ratings[opp_id] if opp_id else float(elo_start)
 
-        actual   = result_score.get(fight["result"].upper(), 0.5)
+        actual   = _RESULT_SCORE.get(fight["result"].upper(), 0.5)
         expected = _expected(r_fighter, r_opp)
 
         if opp_id:
@@ -385,16 +414,8 @@ def compute_elo_for_pool(
         else:
             multiplier = _method_multiplier(fight["method"]) if actual == 1.0 else 1.0
 
-        change = elo_k * multiplier * (actual - expected)
-        if change < 0:
-            change *= loss_dampening
-        elif change > 0:
-            active = _season_activity(histories.get(fid, []), fight["date"])
-            if active >= activity_threshold:
-                change *= activity_bonus_mult
-            if (r_opp - r_fighter) >= upset_elo_gap:
-                change *= upset_bonus_mult
-        change += participation_bonus
+        change = _rating_change(actual, expected, multiplier, r_fighter, r_opp,
+                                histories.get(fid, []), fight["date"])
         ratings[fid] = max(ratings[fid] + change, elo_min)
         if opp_id:
             ratings[opp_id] = max(ratings[opp_id] - change, elo_min)
@@ -404,6 +425,8 @@ def compute_elo_for_pool(
 
 # ── scoring profiles ────────────────────────────────────────────────────────
 
+# How impressive a win by each method looks, for the "method" match factor.
+# (Separate from method_multiplier, which drives Elo.)
 method_prestige = {
     "ko": 1.5,
     "tko": 0.9,
@@ -414,10 +437,12 @@ method_prestige = {
 
 
 def _method_prestige(method: str) -> float:
+    """Prestige of a win by `method`; unknown methods count as a decision."""
     return method_prestige.get(method.lower().strip(), 0.5)
 
 
 def _current_streak(history: list[dict]) -> int:
+    """Consecutive wins up to the most recent fight."""
     streak = 0
     for h in sorted(history, key=lambda h: h["date"], reverse=True):
         if h["result"] == "W":
@@ -429,6 +454,11 @@ def _current_streak(history: list[dict]) -> int:
 
 def _profile(fighter: dict, history: list[dict], elo: float,
              credit: dict | None = None) -> dict:
+    """Everything the `_score_*` functions compare, for one fighter.
+
+    Record-based figures include cross-sport `credit`; finish rate and form
+    use native history only.
+    """
     credit = credit or _no_credit()
     native_total = fighter["wins"] + fighter["losses"] + fighter["draws"]
     wins   = fighter["wins"]   + credit["wins"]
@@ -441,12 +471,16 @@ def _profile(fighter: dict, history: list[dict], elo: float,
         sum(_method_prestige(h["method"]) for h in win_fights) / len(win_fights)
         if win_fights else 0.5
     )
+    # Despite the name, "opp_quality_score" is the share of wins that were
+    # finishes (not decisions or DQs).
     if win_fights:
-        finishes         = sum(1 for h in win_fights if h["method"].lower() not in ("decision", "disqualification"))
+        finishes          = sum(1 for h in win_fights
+                                if h["method"].lower() not in ("decision", "disqualification"))
         opp_quality_score = finishes / len(win_fights)
     else:
         opp_quality_score = 0.0
 
+    # Last five results, most recent weighted heaviest (5,4,3,2,1).
     recent = sorted(history, key=lambda h: h["date"], reverse=True)[:5]
     if recent:
         result_value = {"W": 1.0, "D": 0.5, "L": 0.0}
@@ -464,8 +498,7 @@ def _profile(fighter: dict, history: list[dict], elo: float,
         "total":            total,
         "native_total":     native_total,
         "transferred":      credit["bouts"],
-        # No record anywhere means unknown, not a 0% win rate — the old
-        # `wins / (total or 1)` made a debutant look identical to an 0-3 fighter.
+        # No record at all means unknown (0.5), not a 0% win rate.
         "win_rate":         wins / total if total else 0.5,
         "elo":              elo,
         "finish_score":     finish_score,
@@ -477,6 +510,10 @@ def _profile(fighter: dict, history: list[dict], elo: float,
         "weight_kg":        fighter["weight_kg"],
     }
 
+
+# Each _score_* returns 1.0 for an identical pair, falling towards 0.0 as the
+# two fighters differ. Absolute differences use a scale (e.g. 10 kg, 400 Elo)
+# beyond which the score is 0.
 
 def _score_weight(a: dict, b: dict) -> float:
     return max(0.0, 1.0 - abs(a["weight_kg"] - b["weight_kg"]) / 10.0)
@@ -503,9 +540,7 @@ def _score_recent_form(a: dict, b: dict) -> float:
     return 1.0 - abs(a["recent_form"] - b["recent_form"])
 
 def _score_age(a: dict, b: dict) -> float:
-    # Date of birth is optional on a profile, so age may be unknown. Score it
-    # as neutral rather than raising — this factor carries 3% of the weight and
-    # is not worth failing a whole pool over.
+    # Date of birth is optional, so age may be unknown: score it as neutral.
     if a["age"] is None or b["age"] is None:
         return 0.5
     return max(0.0, 1.0 - abs(a["age"] - b["age"]) / 10.0)
@@ -521,13 +556,14 @@ def match_score(
     fighter_credit:   dict | None = None,
     opponent_credit:  dict | None = None,
 ) -> int:
+    """Compatibility of two fighters, 0..100 (higher is a closer match)."""
     a = _profile(fighter,  fighter_history,  fighter_elo,  fighter_credit)
     b = _profile(opponent, opponent_history, opponent_elo, opponent_credit)
     raw = (
-        _score_weight(a, b)      * weight_W      +
+        _score_weight(a, b)      * weight_w      +
         _score_elo(a, b)         * elo_w         +
         _score_record(a, b)      * record_w      +
-        _score_method(a, b)      * method_W      +
+        _score_method(a, b)      * method_w      +
         _score_form(a, b)        * form_w        +
         _score_opp_quality(a, b) * opp_quality_w +
         _score_experience(a, b)  * experience_w  +
@@ -585,16 +621,11 @@ def rank_opponents(
         opp_credit = credits.get(opp["id"]) or _no_credit()
         opp_bouts  = _total_bouts(opp) + opp_credit["bouts"]
 
-        # Divisions are single-sex. Unlike an experience gap — which a
-        # promoter may reasonably choose to look at and override — a mixed
-        # pairing is dropped outright and is never returned, not even under
-        # include_ineligible. Offering one at all would be the bug.
-        #
-        # Both sides must be known for this to bite: a fighter with no gender
-        # recorded is missing data, not a mismatch, and excluding them would
-        # silently empty the matchmaker for every profile created before the
-        # field existed.
-        if fighter.get("gender") and opp.get("gender")                 and fighter["gender"] != opp["gender"]:
+        # Mixed-gender pairings are never returned, not even with
+        # include_ineligible. Only applies when both genders are known: a
+        # missing gender is missing data, not a mismatch.
+        if (fighter.get("gender") and opp.get("gender")
+                and fighter["gender"] != opp["gender"]):
             continue
 
         eligible = not experience_mismatch(fighter_bouts, opp_bouts)
@@ -621,5 +652,6 @@ def rank_opponents(
                 row["ineligible_reason"] = "experience_mismatch"
         results.append(row)
 
+    # Eligible first, then best score first.
     results.sort(key=lambda x: (x.get("eligible", True), x["match_score"]), reverse=True)
     return results

@@ -7,16 +7,16 @@ import { useAuthStore } from '../../store/auth'
 import Spinner from '../../components/Spinner'
 import PaywallGate from '../../components/PaywallGate'
 import { useEntitlement } from '../../hooks/useEntitlement'
+import { SPORTS, SPORT_LABEL } from '../../constants/sports'
+import { RULESETS, FIGHT_METHODS } from '../../constants/fights'
+import { SportBadge, RulesetPill } from '../../components/Pills'
 import FightCardArranger from './FightCardArranger'
 
-const SPORTS = ['mma', 'boxing', 'kickboxing', 'muaythai']
-const SPORT_LABEL = { mma: 'MMA', boxing: 'Boxing', kickboxing: 'Kickboxing', muaythai: 'Muay Thai' }
-const SPORT_BADGE = { mma: 'badge-mma', boxing: 'badge-box', kickboxing: 'badge-kb', muaythai: 'badge-kb' }
-
-const RULESETS = {
-  kickboxing: ['N-Class', 'C-Class', 'B-Class', 'A-Class', 'Pro-Amateur', 'Pro'],
-  muaythai:   ['Novice', 'C-Class', 'B-Class', 'A-Class', 'Elite', 'Pro'],
-}
+// One event: banner, the fight card (add / complete / remove / arrange bouts)
+// and fighter registrations.
+//
+// Card lifecycle: bouts are added until `max_bouts` is reached; once the card
+// is full, the event's creator can set the running order (FightCardArranger).
 
 export default function EventDetail() {
   const { id } = useParams()
@@ -24,6 +24,7 @@ export default function EventDetail() {
   const { user } = useAuthStore()
   const { canWrite } = useEntitlement()
   const qc = useQueryClient()
+  // Which sport's fighters the add-bout / register forms list.
   const [boutSport, setBoutSport] = useState('mma')
   const [showBoutForm, setShowBoutForm] = useState(false)
   const [arranging, setArranging] = useState(false)
@@ -31,10 +32,8 @@ export default function EventDetail() {
   const [completingId, setCompletingId] = useState(null)
   const photoRef = useRef(null)
 
-  // Every write affordance on this page — the banner upload, adding bouts,
-  // completing them, registering fighters, the card arranger — funnels through
-  // canManage, so entitlement is ANDed in once here. The trial banner above the
-  // page explains why they have gone.
+  // Every edit control on this page checks canManage (role AND an active
+  // subscription). The arranger additionally needs `can_arrange` from the API.
   const roleCanManage = ['coach', 'promoter', 'admin'].includes(user?.role)
   const canManage  = roleCanManage && canWrite
   const isFighter  = user?.role === 'fighter'
@@ -149,8 +148,7 @@ export default function EventDetail() {
   const maxBouts   = boutsData?.max_bouts ?? null
   const canArrange = !!boutsData?.can_arrange
   const cardFull   = !!maxBouts && bouts.length >= maxBouts
-  // The arrange phase opens only once the card is complete, which is the point
-  // of setting a size at creation.
+  // The running order can only be set once the card is full.
   const arrangeReady = canArrange && cardFull && bouts.length > 1
   const regs   = regsData?.registrations ?? []
   const fighters = fightersData?.fighters ?? []
@@ -169,8 +167,7 @@ export default function EventDetail() {
           {ev.venue_name && ` · ${ev.venue_name}`}
         </div>
         {ev.description && <div style={{ marginTop: '.5rem', fontSize: 14, opacity: .8 }}>{ev.description}</div>}
-        {/* Role allows it, subscription does not — say so rather than leaving a
-            promoter wondering where the fight-card controls went. */}
+        {/* Role allows it but the subscription does not: explain, don't just hide. */}
         {roleCanManage && !canWrite && (
           <div style={{ marginTop: '1rem' }}>
             <PaywallGate label="Subscribe to build this card" />
@@ -291,14 +288,8 @@ export default function EventDetail() {
                 <div className="bout-fighter">{b.fighter_a?.name ?? '–'}</div>
                 <div className="bout-vs">VS</div>
                 <div className="bout-fighter" style={{ textAlign: 'right' }}>{b.fighter_b?.name ?? '–'}</div>
-                <span className={`badge ${SPORT_BADGE[b.sport] ?? ''}`}>{SPORT_LABEL[b.sport] ?? b.sport}</span>
-                {b.ruleset && (
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, padding: '2px 7px',
-                    background: 'rgba(251,191,36,.1)', border: '1px solid rgba(251,191,36,.3)',
-                    color: 'var(--warn)', borderRadius: 4,
-                  }}>{b.ruleset}</span>
-                )}
+                <SportBadge sport={b.sport} />
+                <RulesetPill ruleset={b.ruleset} />
                 {b.completed ? (
                   <span className="bout-done" title={b.fight_date ? `Fought ${b.fight_date}` : undefined}>
                     ✓ {b.result === 'D' ? 'Draw' : `${b.winner?.name ?? 'Winner'} won`}
@@ -338,10 +329,7 @@ export default function EventDetail() {
                     <div className="form-group">
                       <label className="form-label">Method</label>
                       <select name="method" defaultValue="Decision">
-                        <option value="Decision">Decision</option>
-                        <option value="KO/TKO">KO / TKO</option>
-                        <option value="Submission">Submission</option>
-                        <option value="DQ">DQ</option>
+                        {FIGHT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                       </select>
                     </div>
                     <div className="form-group">
@@ -404,7 +392,7 @@ export default function EventDetail() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500, fontSize: 13 }}>{r.fighter?.name}</div>
                 </div>
-                <span className={`badge ${SPORT_BADGE[r.sport] ?? ''}`}>{r.sport}</span>
+                <SportBadge sport={r.sport} />
               </div>
             ))
           }

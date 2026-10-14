@@ -1,3 +1,22 @@
+"""Fighter routes, all under /api/<sport>/...
+
+  GET    /<sport>/fighters                         list / search (with rank badges)
+  GET    /<sport>/fighters/<id>                    one fighter, with Elo
+  POST   /<sport>/fighters                         create            (coach, admin)
+  PUT    /<sport>/fighters/<id>                    edit              (coach, admin)
+  DELETE /<sport>/fighters/<id>                    delete            (coach, admin)
+  GET    /<sport>/fighters/<id>/matches            suggested opponents (paid)
+  GET    /<sport>/fighters/<id>/fights             fight history
+  POST   /<sport>/fighters/<id>/fights             log a result      (coach, promoter, admin)
+  GET    /<sport>/fights                           every fight in the sport
+  GET|POST|DELETE /<sport>/fighters/<id>/prior-experience[/<entry_id>]
+
+Coaches may only change fighters in their own gym (_coach_owns_fighter).
+Records hidden by their owner are masked by _apply_privacy / _mask_record.
+"""
+
+from datetime import date
+
 from flask import Blueprint, jsonify, request, current_app
 from ..helpers import (
     VALID_SPORTS, get_db, err, require_json, current_user,
@@ -16,6 +35,7 @@ TOP_RANKS_SHOWN = 10
 @fighters_bp.route("/<sport>/fighters", methods=["GET"])
 @login_required
 def list_fighters(sport):
+    """Fighters in a sport, filtered by ?q, ?county, ?max_weight and ?gender."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     q      = request.args.get("q", "").strip()
@@ -34,23 +54,19 @@ def list_fighters(sport):
     with get_db(sport) as db:
         fighters = (db.search_fighters(q, county, max_weight, gender) if q
                     else db.get_all_fighters(county, max_weight, gender))
-        # Rank is a standing within the whole discipline, so it is computed
-        # from every fighter in the sport and then attached to whatever subset
-        # the filters returned. Ranking the filtered set instead would make
-        # "#1" mean "first among fighters in Kent", which is not what the badge
-        # claims and would change as the user typed in the search box.
+        # Rank is computed across the WHOLE sport, then attached to the
+        # filtered subset, so "#1" always means #1 in the sport, not #1 among
+        # the current search results.
         elo_ratings = db.elo_pool()
         everyone    = db.get_all_fighters()
 
     ranked = sorted(everyone, key=lambda f: elo_ratings.get(f["id"], 0.0), reverse=True)
-    # Only the top of the table is worth surfacing on a card: "#247" tells a
-    # reader nothing, and the badge stops meaning anything if everyone has one.
+    # Only the top TOP_RANKS_SHOWN get a rank badge.
     top_ranks = {f["id"]: i + 1 for i, f in enumerate(ranked[:TOP_RANKS_SHOWN])}
 
     fighters = _apply_privacy(fighters, sport, current_user())
     for f in fighters:
-        # A fighter who hid their record hid their standing with it — a rank is
-        # derived from exactly the results they chose not to publish.
+        # A hidden record hides the rank too, since rank is derived from it.
         if f.get("record_hidden"):
             continue
         rank = top_ranks.get(f["id"])
@@ -62,6 +78,7 @@ def list_fighters(sport):
 @fighters_bp.route("/<sport>/fighters/<int:fighter_id>", methods=["GET"])
 @login_required
 def get_fighter(sport, fighter_id):
+    """One fighter, plus their Elo, band and declared prior experience."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     with get_db(sport) as db:
@@ -69,6 +86,8 @@ def get_fighter(sport, fighter_id):
     if not fighter:
         return err("Fighter not found.", 404)
     [fighter] = _apply_privacy([fighter], sport, current_user())
+    # A rating failure should not stop the profile loading; fall back to the
+    # starting band.
     try:
         from ..services.matchmaker import elo_band
         with get_db(sport) as db2:
@@ -86,16 +105,16 @@ def get_fighter(sport, fighter_id):
 @roles_required("coach", "admin")
 @subscription_required
 def add_fighter(sport):
+    """Create a fighter, optionally placing them in one of the coach's gyms."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     data, error = require_json("name", "weight")
     if error:
         return error
 
-    # Placing the fighter in a gym at creation matters more than it looks:
-    # _coach_owns_fighter() derives a coach's authority over a fighter from the
-    # gym, so a fighter created with no gym is one the creating coach cannot
-    # subsequently edit or delete.
+    # Assign the gym at creation: a coach's right to edit a fighter comes from
+    # the gym (_coach_owns_fighter), so a gymless fighter would be uneditable
+    # by the coach who created it.
     gym_id = data.get("gym_id")
     if gym_id is not None:
         try:
@@ -105,7 +124,6 @@ def add_fighter(sport):
             return err(str(e) if isinstance(e, ValueError) else "Invalid gym_id.", 403)
 
     try:
-        from datetime import date
         raw_dob = data.get("date_of_birth")
         dob = date.fromisoformat(raw_dob) if raw_dob else None
         with get_db(sport) as db:
@@ -121,7 +139,8 @@ def add_fighter(sport):
                 db.assign_gym(fid, gym_id)
             fighter = db.get_fighter(fid)
         return jsonify(fighter), 201
-    except (ValueError, Exception) as e:
+    except Exception as e:
+        # Any failure (bad date, bad weight, validation) is reported as a 400.
         return err(str(e))
 
 
@@ -129,6 +148,7 @@ def add_fighter(sport):
 @roles_required("coach", "admin")
 @subscription_required
 def update_fighter(sport, fighter_id):
+    """Partial update: only the fields present in the body are changed."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     user = current_user()
@@ -136,7 +156,6 @@ def update_fighter(sport, fighter_id):
         return err("You can only edit fighters in your own gym.", 403)
     data = request.get_json(silent=True) or {}
     try:
-        from datetime import date
         updates = {}
         if "name"          in data: updates["name"]          = str(data["name"]).strip()
         if "weight"        in data: updates["weight"]        = float(data["weight"])
@@ -173,21 +192,19 @@ def delete_fighter(sport, fighter_id):
 
 @fighters_bp.route("/<sport>/fighters/<int:fighter_id>/matches", methods=["GET"])
 @login_required
-# Gated despite being a GET, which is the one deliberate exception to "reads are
-# free". This endpoint is a computation, not a record: it is the only thing here
-# producing an answer the user could not reach by reading pages they already
-# have. It is also the most expensive handler in the app — it scores every
-# fighter in the discipline and recomputes ratings from history. Leaving it open
-# would make the whole pitch free and reduce the paid tier to data entry, which
-# is work the user does for the platform rather than the other way round.
 @subscription_required
 def get_fighter_matches(sport, fighter_id):
+    """Suggested opponents for a fighter, best first.
+
+    The one GET that needs a subscription: matchmaking is the product's core
+    paid feature, and the most expensive handler (it re-rates the whole sport).
+
+    ?include_ineligible=1 also returns opponents filtered out for an
+    experience gap, flagged with `eligible: false`.
+    """
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     viewer = current_user()
-    # Opponents whose experience gap makes for a mismatch are held back by
-    # default; ?include_ineligible=1 returns them flagged so a promoter can see
-    # who was filtered and why.
     show_all = request.args.get("include_ineligible", "").lower() in ("1", "true", "yes")
     try:
         with get_db(sport) as db:
@@ -197,12 +214,13 @@ def get_fighter_matches(sport, fighter_id):
 
     hidden = set()
     try:
-        from flask import current_app
         hidden = current_app.auth_db.get_hidden_fighter_ids(sport)
     except Exception:
         pass
 
     is_admin = viewer and viewer["role"] == "admin"
+    # Keys the matchmaker adds to each fighter dict. They are moved out of the
+    # "fighter" object and into the row around it.
     envelope_keys = ("match_score", "weight_diff", "elo", "elo_band",
                      "effective_bouts", "transferred_bouts",
                      "eligible", "ineligible_reason")
@@ -239,9 +257,9 @@ def get_fighter_matches(sport, fighter_id):
 @fighters_bp.route("/<sport>/fighters/<int:fighter_id>/fights", methods=["GET"])
 @login_required
 def get_fighter_fights(sport, fighter_id):
+    """One fighter's history; empty with `record_hidden` if they hid it."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
-    from flask import current_app
     viewer = current_user()
     hidden = current_app.auth_db.get_hidden_fighter_ids(sport)
     is_admin = viewer and viewer["role"] == "admin"
@@ -257,6 +275,7 @@ def get_fighter_fights(sport, fighter_id):
 @roles_required("coach", "promoter", "admin")
 @subscription_required
 def add_fight(sport, fighter_id):
+    """Log a result for one fighter. Updates their record."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     user = current_user()
@@ -276,8 +295,7 @@ def add_fight(sport, fighter_id):
         with get_db(sport) as db:
             fight_id = db.add_fight(
                 fighter_id=fighter_id,
-                # Bounded to the column widths — these were unbounded strings
-                # written straight into the record another fighter reads.
+                # Lengths match the column widths.
                 opponent_name=clean_str(data["opponent_name"], max_len=100,
                                         field="Opponent name"),
                 result=str(data["result"]).upper(),
@@ -297,9 +315,9 @@ def add_fight(sport, fighter_id):
 @fighters_bp.route("/<sport>/fights", methods=["GET"])
 @login_required
 def get_all_fights(sport):
+    """Every fight in the sport, minus hidden records (History page)."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
-    from flask import current_app
     viewer = current_user()
     with get_db(sport) as db:
         fights = db.get_all_fights()
@@ -314,6 +332,7 @@ def get_all_fights(sport):
 @fighters_bp.route("/<sport>/fighters/<int:fighter_id>/prior-experience", methods=["GET"])
 @login_required
 def list_prior_experience(sport, fighter_id):
+    """A fighter's declared records in other sports."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     with get_db(sport) as db:
@@ -362,6 +381,7 @@ def set_prior_experience(sport, fighter_id):
 @roles_required("coach", "admin")
 @subscription_required
 def delete_prior_experience(sport, fighter_id, entry_id):
+    """Remove one declared-experience entry."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     user = current_user()

@@ -1,14 +1,33 @@
-from flask import Blueprint, jsonify, request, current_app
+"""Fight-card routes for an event, under /api/events/<event_id>/...
+
+  GET    /bouts                     the card, in running order
+  PUT    /bouts/order               set the running order   (event's promoter, admin)
+  POST   /bouts                     add a bout              (coach, promoter, admin)
+  DELETE /bouts/<bout_id>           remove a bout
+  POST   /bouts/<bout_id>/complete  record the result
+  POST   /register                  put a fighter forward for the event
+  GET    /registrations             everyone put forward
+  DELETE /registrations/<reg_id>    withdraw
+
+Creating and editing the event itself is in event_crud.py.
+
+Bouts and registrations are stored per sport, so "whole card" reads loop over
+VALID_SPORTS and merge the results.
+"""
+
+from flask import Blueprint, jsonify, request
+from ..extensions import db as _db
 from ..helpers import (
     VALID_SPORTS, get_db, err, require_json, current_user,
     login_required, roles_required, subscription_required, _coach_owns_fighter, clean_str
 )
+from ..models.event import Event, EventBout
 
 events_bp = Blueprint("events", __name__, url_prefix="/api/events")
 
 
 def _event_or_none(event_id):
-    from ..models.event import Event
+    """The Event for this id, or None (event_id may be a legacy non-numeric id)."""
     try:
         return Event.query.get(int(event_id))
     except (TypeError, ValueError):
@@ -18,9 +37,8 @@ def _event_or_none(event_id):
 def _may_arrange(event, user) -> bool:
     """Who can set the running order.
 
-    The event's creator, or an admin. Events created before `created_by`
-    existed have no owner recorded, so any promoter keeps the access they had
-    — locking those would strand cards nobody could touch.
+    The event's creator, or an admin. Older events with no recorded creator
+    can be arranged by any promoter.
     """
     if not user:
         return False
@@ -45,6 +63,7 @@ def _card_order(bouts: list) -> list:
 @events_bp.route("/<event_id>/bouts", methods=["GET"])
 @login_required
 def get_event_bouts(event_id):
+    """The whole card across all sports, plus whether this user may arrange it."""
     bouts = []
     for sport in VALID_SPORTS:
         with get_db(sport) as db:
@@ -73,8 +92,6 @@ def set_bout_order(event_id):
     if not isinstance(order, list) or not order:
         return err("Send the running order as a list of bout ids.")
 
-    from ..models.event import EventBout
-    from ..extensions import db as _db
     bouts = EventBout.query.filter_by(event_id=str(event_id)).all()
     by_id = {b.id: b for b in bouts}
 
@@ -83,8 +100,8 @@ def set_bout_order(event_id):
     except (TypeError, ValueError):
         return err("Bout ids must be whole numbers.")
 
-    # Refuse a partial or foreign list outright: applying it would silently
-    # leave some bouts unordered and scramble the card rather than reorder it.
+    # The list must contain every bout on the card exactly once; a partial
+    # list would leave some bouts unordered.
     if set(ids) != set(by_id) or len(ids) != len(by_id):
         return err("The running order must list every bout on this card exactly once.")
 
@@ -100,6 +117,8 @@ def set_bout_order(event_id):
 @roles_required("coach", "promoter", "admin")
 @subscription_required
 def add_event_bout(event_id):
+    """Add a bout. A coach must own at least one fighter; the other must
+    be in their gym too or registered for the event."""
     data, error = require_json("sport", "fighter_a_id", "fighter_b_id")
     if error:
         return error
@@ -125,7 +144,6 @@ def add_event_bout(event_id):
             return err("Fighter B is not in your gym and is not registered for this event.", 403)
     event = _event_or_none(event_id)
     if event is not None and event.max_bouts:
-        from ..models.event import EventBout
         current = EventBout.query.filter_by(event_id=str(event_id)).count()
         if current >= event.max_bouts:
             return err(f"This card is full — {event.max_bouts} of "
@@ -148,22 +166,22 @@ def add_event_bout(event_id):
 @roles_required("coach", "promoter", "admin")
 @subscription_required
 def delete_event_bout(event_id, bout_id):
-    for sport in VALID_SPORTS:
-        with get_db(sport) as db:
-            try:
-                db.delete_bout(bout_id)
-                return jsonify({"deleted": bout_id})
-            except ValueError:
-                continue
-    return err("Bout not found.", 404)
+    """Remove a bout from the card."""
+    # Bouts are looked up by id alone, so any sport's service will do.
+    with get_db(VALID_SPORTS[0]) as db:
+        try:
+            db.delete_bout(bout_id)
+        except ValueError:
+            return err("Bout not found.", 404)
+    return jsonify({"deleted": bout_id})
 
 
 @events_bp.route("/<event_id>/bouts/<int:bout_id>/complete", methods=["POST"])
 @roles_required("coach", "promoter", "admin")
 @subscription_required
 def complete_event_bout(event_id, bout_id):
-    """Check a bout off as complete. The result lands in both fighters' histories,
-    attributed to this event."""
+    """Record a bout's result. It is logged in both fighters' histories,
+    attributed to this event. Body: {"result": "A" | "B" | "D", ...}."""
     data, error = require_json("result")
     if error:
         return error
@@ -194,6 +212,7 @@ def complete_event_bout(event_id, bout_id):
 @roles_required("coach", "promoter", "admin")
 @subscription_required
 def register_fighter_for_event(event_id):
+    """Put a fighter forward for this event (coaches: own gym only)."""
     data, error = require_json("sport", "fighter_id")
     if error:
         return error
@@ -215,6 +234,7 @@ def register_fighter_for_event(event_id):
 @events_bp.route("/<event_id>/registrations", methods=["GET"])
 @login_required
 def get_event_registrations(event_id):
+    """Everyone registered for this event, across all sports."""
     registrations = []
     for sport in VALID_SPORTS:
         with get_db(sport) as db:
@@ -226,6 +246,7 @@ def get_event_registrations(event_id):
 @roles_required("coach", "promoter", "admin")
 @subscription_required
 def delete_event_registration(event_id, reg_id):
+    """Withdraw a registration (coaches: own gym only)."""
     user = current_user()
     for sport in VALID_SPORTS:
         with get_db(sport) as db:

@@ -1,26 +1,45 @@
+"""Shared request helpers used by every blueprint.
+
+Sections:
+  - responses and request parsing   (err, require_json)
+  - authentication and roles        (current_user, login_required, roles_required)
+  - billing entitlement             (has_active_access, subscription_required)
+  - fighter privacy and ownership   (owns_profile, _apply_privacy, _coach_owns_fighter)
+"""
+
 import functools
 from flask import jsonify, request, session, current_app, g
 
-VALID_SPORTS = ("kickboxing", "mma", "boxing", "muaythai")
+# Re-exported from .validation, which owns the one implementation, so
+# blueprints can keep importing them from here. Keeping a single sanitiser
+# avoids two copies drifting apart.
+from .validation import clean_str, ValidationError  # noqa: F401
+from .constants import VALID_SPORTS  # noqa: F401  (re-exported for blueprints)
 
 
 def get_db(sport: str):
-    """Return a FighterService for the given sport (context-manager compatible)."""
+    """Return a FighterService for one sport. Use it as `with get_db(s) as db:`."""
     from .services.fighter_service import FighterService
     return FighterService(sport)
 
 
-# Re-exported from .validation, which owns the one implementation. Kept here
-# because every blueprint already imports it from helpers, and two copies of a
-# sanitiser is how one of them ends up being the lenient one.
-from .validation import clean_str, ValidationError  # noqa: E402,F401
-
+# ── responses and request parsing ─────────────────────────────────────────
 
 def err(msg: str, status: int = 400):
+    """A JSON error response: `{"error": msg}` with the given status."""
     return jsonify({"error": msg}), status
 
 
 def require_json(*fields):
+    """Parse the JSON body and check the named fields are present and non-empty.
+
+    Returns `(data, None)` on success or `(None, error_response)` on failure,
+    so a route can do:
+
+        data, error = require_json("name", "weight")
+        if error:
+            return error
+    """
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         # A JSON array or bare string parses fine and then fails on .get() with
@@ -32,7 +51,10 @@ def require_json(*fields):
     return data, None
 
 
+# ── authentication and roles ──────────────────────────────────────────────
+
 def current_user() -> dict | None:
+    """The logged-in user as a dict, or None if there is no valid session."""
     uid = session.get("user_id")
     if not uid:
         return None
@@ -44,6 +66,7 @@ def current_user() -> dict | None:
 
 
 def login_required(f):
+    """Route decorator: 401 unless someone is logged in."""
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         if not current_user():
@@ -53,6 +76,7 @@ def login_required(f):
 
 
 def roles_required(*roles):
+    """Route decorator: 401 if logged out, 403 unless the user has one of `roles`."""
     def decorator(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
@@ -66,18 +90,19 @@ def roles_required(*roles):
     return decorator
 
 
-def has_active_access(user) -> bool:
-    """Is this account entitled to write? The one truth function.
+# ── billing entitlement ───────────────────────────────────────────────────
 
-    Cached on `flask.g` for the request. The matchmaking handler alone makes
-    several database round trips through nested helpers, and a decorator that
-    added one query per call would be paying for the same answer repeatedly.
+def has_active_access(user) -> bool:
+    """Is this account allowed to write (add, edit, matchmake)?
+
+    This is the only place entitlement is decided. The answer is cached on
+    `flask.g` for the rest of the request, because some handlers reach it
+    several times through nested helpers.
     """
     if not user:
         return False
-    # The kill switch, checked here and nowhere else. With billing off the whole
-    # feature is inert: every gated route behaves exactly as it did before, so
-    # the code can ship and be deployed before a charge is possible.
+    # Billing kill switch, checked here and nowhere else. With billing off,
+    # every gated route is open to everyone.
     if not current_app.config.get("BILLING_ENABLED"):
         return True
     if user["role"] == "admin":
@@ -88,13 +113,11 @@ def has_active_access(user) -> bool:
 
 
 def payment_required():
-    """402, with a machine-readable discriminator and the current entitlement.
+    """A 402 response carrying `payment_required: true` and the entitlement.
 
-    `payment_required: true` mirrors the `csrf: true` convention the CSRF
-    handler already uses at 419, so the frontend has one pattern for "this
-    status code means something specific". Sending the entitlement back with the
-    refusal lets the client flip every mounted page to read-only on the first
-    402, without waiting for the next /api/auth/me.
+    The flag follows the same convention as `csrf: true` on 419 responses.
+    Including the entitlement lets the frontend switch every page to read-only
+    on the first 402, without waiting for the next /api/auth/me.
     """
     ent = current_app.billing_db.entitlement(current_user())
     return jsonify({
@@ -130,7 +153,10 @@ def subscription_required(f):
     return wrapper
 
 
+# ── fighter privacy and ownership ─────────────────────────────────────────
+
 def _mask_record(fighter: dict) -> dict:
+    """Copy of `fighter` with its win/loss/draw record blanked out."""
     return {**fighter, "wins": None, "losses": None, "draws": None, "record_hidden": True}
 
 
@@ -151,6 +177,10 @@ def owns_profile(viewer, fighter: dict, sport: str) -> bool:
 
 
 def _apply_privacy(fighters: list, sport: str, viewer) -> list:
+    """Mask the records of fighters who chose to hide them.
+
+    Admins and the fighter themselves still see the real record.
+    """
     hidden = current_app.auth_db.get_hidden_fighter_ids(sport)
     if not hidden:
         return fighters
@@ -163,6 +193,7 @@ def _apply_privacy(fighters: list, sport: str, viewer) -> list:
 
 
 def _coach_owns_fighter(sport: str, fighter_id: int, user: dict) -> bool:
+    """True if `user` is an admin or coaches the gym this fighter belongs to."""
     if user["role"] == "admin":
         return True
     with get_db(sport) as db:

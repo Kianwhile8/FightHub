@@ -1,12 +1,18 @@
-"""BillingService — entitlement state and, from phase 4, Stripe.
+"""BillingService: subscription rows, entitlement, and Stripe.
 
-Blueprints reach this through `current_app.billing_db`, the same way they reach
-AuthService through `current_app.auth_db`.
+Reached through `current_app.billing_db` (see app/__init__.py).
 
-The important function here is `entitlement()`. It is the only place that
-decides whether an account may write, and it returns one envelope shape that
-`/api/auth/me`, `/api/billing/status`, the 402 body and the admin user list all
-serve — so those four can never disagree about a user's state.
+The key method is `entitlement()`. It is the only place that decides whether an
+account may write, and it returns one fixed "envelope" dict that
+/api/auth/me, /api/billing/status, the 402 body and the admin user list all
+serve, so they can never disagree about a user's state.
+
+Sections:
+  - rows             creating and fetching a user's Subscription
+  - pricing          role -> plan -> Stripe price
+  - entitlement      is this account active, and the envelope describing it
+  - admin grants     comp / revoke
+  - Stripe           checkout, customer portal, webhook mapping, cancellation
 """
 
 import math
@@ -43,13 +49,9 @@ class BillingService:
                         created_at: datetime = None) -> Subscription:
         """Return this user's subscription row, creating a trialing one if absent.
 
-        `created_at` is the account's creation time, and the trial is measured
-        from it rather than from now. That matters for self-healing: if a row is
-        created late for an account that has existed for a year — a user who
-        slipped through the migration backfill, say — they get a trial that
-        expired eleven months ago, not a fresh one. Handing out a new trial
-        every time a row goes missing would make the trial renewable by anyone
-        who noticed.
+        The trial is measured from `created_at` (the account's creation time),
+        not from now. So a year-old account whose row went missing gets a trial
+        that expired long ago, rather than a fresh one.
         """
         existing = Subscription.query.filter_by(user_id=user_id).first()
         if existing:
@@ -79,9 +81,8 @@ class BillingService:
                            comp_reason: str = None) -> Subscription:
         """Construct a row for a brand-new account WITHOUT committing.
 
-        AuthService.register adds this to the same transaction as the User, so a
-        user can never exist without an entitlement row — and a failed
-        registration rolls both back together.
+        AuthService.register adds it in the same transaction as the User, so
+        both are saved, or both rolled back, together.
         """
         trial_days = current_app.config.get("TRIAL_DAYS", 7)
         base = created_at or datetime.utcnow()
@@ -113,9 +114,8 @@ class BillingService:
     def price_for_role(self, role: str) -> tuple[str, str]:
         """(stripe_price_id, plan) for a role.
 
-        Server-side only, and the reason /api/billing/checkout ignores its
-        request body entirely. A client that could name its own price id could
-        name the £10 one while registering as a coach.
+        Always decided server-side from the role. /api/billing/checkout ignores
+        its request body so a client cannot pick a cheaper price.
         """
         if role == "admin":
             raise ValueError("Administrator accounts do not require a subscription.")
@@ -140,11 +140,7 @@ class BillingService:
     # ── entitlement ────────────────────────────────────────────────────────
 
     def entitlement(self, user: dict | None) -> dict:
-        """The canonical entitlement envelope for a user.
-
-        Shape is fixed, because four callers serve it and a fifth reads it:
-        /api/auth/me, /api/billing/status, the 402 body, the admin list, and
-        useEntitlement() in the frontend.
+        """The entitlement envelope for a user (see `_envelope` for its shape).
 
         `state` is one of:
             admin     — never pays
@@ -179,38 +175,38 @@ class BillingService:
         if sub is None:
             return self._envelope(active=False, state="none",
                                   plan=self.plan_for_role(role))
+        return self._envelope_for_row(sub, datetime.utcnow())
 
-        now = datetime.utcnow()
+    def _envelope_for_row(self, sub: Subscription, now: datetime) -> dict:
+        """The envelope for an account that has a subscription row."""
         state = self._state(sub, now)
         return self._envelope(
             active=self._is_active(sub, now),
             state=state,
             plan=sub.plan,
             trial_ends_at=sub.trial_ends_at,
-            trial_days_left=self._days_left(sub.trial_ends_at, now)
-                            if state == "trialing" else None,
+            trial_days_left=(self._days_left(sub.trial_ends_at, now)
+                             if state == "trialing" else None),
             current_period_end=sub.current_period_end,
             cancel_at_period_end=bool(sub.cancel_at_period_end),
-            # Only worth offering the Stripe portal link if there is something
-            # there to manage.
+            # The Stripe portal link is only offered if there is a Stripe
+            # subscription to manage.
             manageable=bool(sub.stripe_subscription_id),
             comped_until=sub.comped_until,
             comp_reason=sub.comp_reason,
         )
 
     def _is_active(self, sub: Subscription, now: datetime) -> bool:
-        """Whether this row entitles its user to write. The one truth."""
+        """Whether this row lets its user write. All access rules live here."""
         if sub.status == "comped":
             # NULL comped_until means indefinite — what founding accounts get.
             return sub.comped_until is None or sub.comped_until > now
         if sub.status == "trialing":
             return sub.trial_ends_at is not None and sub.trial_ends_at > now
         if sub.status in _PAID_STATUSES:
-            # 'past_due' keeps access on purpose. Stripe's smart retries run for
-            # about three weeks, and cutting a promoter off the week of their
-            # event because a card expired is the worst possible moment to do
-            # it — they are almost certainly going to pay. Access ends at
-            # 'canceled' or 'unpaid', which is Stripe giving up.
+            # 'past_due' keeps access on purpose: Stripe retries a failed card
+            # for about three weeks, and most of those users will pay. Access
+            # ends at 'canceled' or 'unpaid', when Stripe gives up.
             if sub.current_period_end is None:
                 return True
             grace = timedelta(days=current_app.config.get("BILLING_GRACE_DAYS", 2))
@@ -218,6 +214,7 @@ class BillingService:
         return False
 
     def _state(self, sub: Subscription, now: datetime) -> str:
+        """Map a row to one of the `state` values listed in entitlement()."""
         if sub.status == "comped":
             return "comped" if self._is_active(sub, now) else "expired"
         if sub.status == "trialing":
@@ -234,6 +231,7 @@ class BillingService:
 
     @staticmethod
     def _days_left(when: datetime | None, now: datetime) -> int | None:
+        """Whole days until `when`, rounded up; 0 once it has passed."""
         if when is None:
             return None
         seconds = (when - now).total_seconds()
@@ -250,20 +248,14 @@ class BillingService:
                   manageable: bool = False,
                   comped_until: datetime = None,
                   comp_reason: str = None) -> dict:
-        """One fixed shape, built in one place.
+        """Build the entitlement envelope. This is the only place its shape is
+        defined; the frontend reads it in hooks/useEntitlement.js.
 
-        Four callers serve this — /api/auth/me, /api/billing/status, the 402 body
-        and the admin user list — and the frontend's useEntitlement() reads it.
-        Building it here rather than at each call site is what stops those four
-        disagreeing about an account's state.
+        Stripe ids are deliberately left out: the client never calls Stripe,
+        and `manageable` answers the only question the page has about them.
 
-        No Stripe ids: they are identifiers at a payment processor, the client
-        makes no Stripe calls, and `manageable` already answers the only
-        question the page has about them.
-
-        `comp_reason` is an administrator's own note ("founding account"), shown
-        in the admin list and on the user's billing page. It is deliberately
-        plain enough to show the account holder.
+        `comp_reason` is an admin's note (e.g. "founding account") and is shown
+        to the account holder too, so keep it plain.
         """
         return {
             "active":               bool(active),
@@ -329,8 +321,8 @@ class BillingService:
     def summary_for_users(self, users: list) -> dict:
         """{user_id: entitlement} for a list of user dicts, in one query.
 
-        The admin page shows a state badge per row. Calling entitlement() in a
-        loop would be one SELECT per user.
+        Same result as calling entitlement() per user, but without one SELECT
+        per row. Used by the admin user list.
         """
         if not users:
             return {}
@@ -356,20 +348,7 @@ class BillingService:
                     active=False, state="none",
                     plan=self.plan_for_role(u.get("role")))
                 continue
-            state = self._state(sub, now)
-            out[u["id"]] = self._envelope(
-                active=self._is_active(sub, now),
-                state=state,
-                plan=sub.plan,
-                trial_ends_at=sub.trial_ends_at,
-                trial_days_left=self._days_left(sub.trial_ends_at, now)
-                                if state == "trialing" else None,
-                current_period_end=sub.current_period_end,
-                cancel_at_period_end=bool(sub.cancel_at_period_end),
-                manageable=bool(sub.stripe_subscription_id),
-                comped_until=sub.comped_until,
-                comp_reason=sub.comp_reason,
-            )
+            out[u["id"]] = self._envelope_for_row(sub, now)
         return out
 
     def plans_display(self) -> dict:
@@ -379,12 +358,9 @@ class BillingService:
     # ── Stripe ─────────────────────────────────────────────────────────────
 
     def _stripe(self):
-        """The configured Stripe client module.
+        """The `stripe` module, configured with our key and pinned API version.
 
-        The API version is pinned here rather than left to the account default.
-        Without it, changing the default version in the Stripe dashboard would
-        alter the shape of webhook payloads with no deploy and no warning — the
-        handlers below read specific fields off those objects.
+        See STRIPE_API_VERSION at the top of this file for why it is pinned.
         """
         import stripe
         key = current_app.config.get("STRIPE_SECRET_KEY")
@@ -397,9 +373,8 @@ class BillingService:
     def _customer_id(self, user: dict, sub: Subscription) -> str:
         """This account's Stripe customer, created on first use.
 
-        `metadata.user_id` is set at creation because it is the first thing the
-        webhook looks at to find the account a Stripe object belongs to — and it
-        is the only link that survives the user changing their email.
+        `metadata.user_id` links the customer back to our account; it is the
+        first thing the webhook checks (see _find_row).
         """
         if sub.stripe_customer_id:
             return sub.stripe_customer_id
@@ -419,9 +394,7 @@ class BillingService:
             raise ValueError(
                 "PUBLIC_BASE_URL is not configured, so there is nowhere to "
                 "return the user to after payment.")
-        # Price comes from the role, never from the request. This is the whole
-        # tamper defence: a client that could name its own price id could buy
-        # the £10 plan while registering as a coach.
+        # Price comes from the role, never from the request (see price_for_role).
         price_id, plan = self.price_for_role(user["role"])
         sub = self.get_for_user(user["id"], user["role"])
         if sub is None:
@@ -450,9 +423,8 @@ class BillingService:
     def portal_url(self, user: dict) -> str:
         """A Stripe customer-portal session.
 
-        Cancellation, card updates, invoices and receipts all live there, so
-        none of that has to be built, and none of it ever touches card data
-        here.
+        Cancellation, card updates and invoices are all handled there, so this
+        app never touches card data.
         """
         base = (current_app.config.get("PUBLIC_BASE_URL") or "").rstrip("/")
         if not base:
@@ -506,9 +478,9 @@ class BillingService:
     def _find_row(self, obj: dict) -> Subscription | None:
         """Locate the account a Stripe object belongs to.
 
-        In order: subscription metadata, then our stored customer id, then the
-        Checkout session's client_reference_id. Never by email — an email is
-        editable at both ends and two accounts could share one.
+        Tried in order: metadata.user_id, the stored Stripe subscription id,
+        the stored Stripe customer id, then the Checkout session's
+        client_reference_id. Never by email, which can change or be shared.
         """
         meta = obj.get("metadata") or {}
         uid = meta.get("user_id")
@@ -559,23 +531,18 @@ class BillingService:
             return None
         stripe = self._stripe()
         obj = stripe.Subscription.retrieve(subscription_id)
-        # retrieve() hands back a StripeObject, and `.get` on one raises
-        # AttributeError rather than returning None. apply_stripe_subscription
-        # reads it as a mapping, so convert first. to_dict() is deep enough —
-        # the nested items list comes back as plain dicts — and unlike
-        # to_dict_recursive it exists in the pinned SDK.
+        # Convert to a plain dict: `.get` on a StripeObject raises
+        # AttributeError instead of returning None.
         return self.apply_stripe_subscription(obj.to_dict())
 
     def cancel_stripe_subscription(self, user_id: int) -> bool:
-        """Cancel immediately at Stripe. Called before an account is deleted.
+        """Cancel the user's Stripe subscription immediately.
 
-        Without this, deleting a user cascades their subscriptions row away and
-        Stripe carries on billing somebody whose data has just been erased —
-        both a money bug and a GDPR one.
+        Called by AuthService.delete_user before the account (and its
+        subscription row) is erased, so Stripe stops billing.
 
-        Returns True if something was cancelled. Failure is reported to the
-        caller rather than raised: an erasure request must not be blocked by a
-        Stripe outage.
+        Returns True if something was cancelled, False if there was nothing to
+        cancel. Stripe errors propagate; delete_user catches and logs them.
         """
         sub = Subscription.query.filter_by(user_id=user_id).first()
         if sub is None or not sub.stripe_subscription_id:

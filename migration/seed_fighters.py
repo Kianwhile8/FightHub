@@ -1,5 +1,10 @@
 """Wipe all fighters and seed synthetic English fighters for all three sports.
 
+WARNING: DESTRUCTIVE. run() deletes EVERY fighter, record and fight history
+row in the database pointed at by DATABASE_URL before seeding. Never run it
+against production. For removable demo data use `flask --app wsgi seed-demo`
+instead.
+
 Uses a match SCHEDULE so every result is recorded consistently for both fighters.
 Run from project root:  python migration/seed_fighters.py
 """

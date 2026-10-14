@@ -1,7 +1,14 @@
+"""Logged fight results."""
+
 from ..extensions import db
 
 
 class FightHistory(db.Model):
+    """One fighter's result in one bout (each bout has a row per fighter).
+
+    `opponent_name` is always set; `opponent_id` only when the opponent is
+    also on FightHub. `fight_date` is an ISO date string (YYYY-MM-DD).
+    """
     __tablename__ = "fight_history"
     __table_args__ = (
         db.CheckConstraint("result IN ('W','L','D')", name="ck_fight_result"),
@@ -41,6 +48,7 @@ class FightHistory(db.Model):
         return {"id": ev.id, "name": ev.name, "date": ev.date}
 
     def to_dict(self) -> dict:
+        """For a single fighter's history (the fighter is implied)."""
         return {
             "id":          self.id,
             "opponent":    self.opponent_name,
@@ -53,6 +61,7 @@ class FightHistory(db.Model):
         }
 
     def to_full_dict(self) -> dict:
+        """As to_dict(), plus who the fighter was (for sport-wide lists)."""
         return {
             "id":          self.id,
             "fighter_id":  self.fighter_id,

@@ -4,18 +4,28 @@ Run with the app factory discovered from wsgi.py:
 
     flask --app wsgi seed-admin
     flask --app wsgi routes
+
+Commands, by group:
+  setup      seed-admin, deploy-migrate, check-deploy
+  demo data  seed-demo, demo-runs, clear-demo, seed-multidivision,
+             matchmaker-report
+  billing    billing-status, billing-expire-trial
 """
+
+import json
+import os
 
 import click
 from flask import current_app
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def _user_by_email(email: str) -> dict:
-    """Look up an account for the billing commands, or exit.
+    """Look up an account by email for the billing commands, or exit.
 
-    Queries the model directly rather than going through AuthService: there is
-    no get_by_email there, and these two commands are the only callers that
-    would want one — not reason enough to widen the service's interface.
+    Queries the model directly because AuthService has no get_by_email and
+    these commands are its only would-be callers.
     """
     from .models.user import User
     user = User.query.filter_by(email=(email or "").strip().lower()).first()
@@ -24,7 +34,13 @@ def _user_by_email(email: str) -> dict:
     return user.to_dict()
 
 
+def _on_cloud_run() -> bool:
+    """Cloud Run sets K_SERVICE in every container."""
+    return bool(os.environ.get("K_SERVICE"))
+
+
 def register_cli(app) -> None:
+    """Attach every command below to `app.cli`."""
     @app.cli.command("seed-admin")
     def seed_admin_command():
         """Create the admin account from ADMIN_EMAIL / ADMIN_PASSWORD."""
@@ -121,7 +137,6 @@ def register_cli(app) -> None:
         This is what /api/auth/me sends the browser, so it is the quickest way
         to see why someone is or is not being asked to pay.
         """
-        import json
         user = _user_by_email(email)
         ent = current_app.billing_db.entitlement(user)
         click.echo(f"{user['email']}  role={user['role']}")
@@ -138,12 +153,13 @@ def register_cli(app) -> None:
         A testing shortcut, and refused outside development: on a production
         database this would cut a real user off mid-trial.
         """
-        if not app.debug and app.config.get("ENV") != "development":
-            import os as _os
-            if _os.environ.get("FLASK_DEBUG") != "1":
-                raise SystemExit(
-                    "refusing outside development — set FLASK_DEBUG=1 if this is "
-                    "really a development database")
+        is_development = (app.debug
+                          or app.config.get("ENV") == "development"
+                          or os.environ.get("FLASK_DEBUG") == "1")
+        if not is_development:
+            raise SystemExit(
+                "refusing outside development — set FLASK_DEBUG=1 if this is "
+                "really a development database")
         from datetime import datetime, timedelta
         from .extensions import db
         from .models.subscription import Subscription
@@ -192,7 +208,11 @@ def register_cli(app) -> None:
 
     @app.cli.command("check-deploy")
     def check_deploy_command():
-        """Verify the app is configured to serve real users."""
+        """Verify the app is configured to serve real users.
+
+        Collects `notes` (fine) and `problems` (must fix) from each check,
+        prints them, and exits non-zero if there are any problems.
+        """
         from .extensions import db
 
         problems, notes = [], []
@@ -230,158 +250,16 @@ def register_cli(app) -> None:
             except Exception as exc:
                 problems.append(f"uploads backend misconfigured: {exc}")
 
-        if app.config.get("RATELIMIT_STORAGE_URL", "memory://").startswith("memory"):
-            # The memory backend keeps its counters inside one process, so the
-            # "5 sign-in attempts" limit is really 5 x (number of processes).
-            # That is only a real problem where there is more than one:
-            #
-            #  * Waitress serves everything from a single process — its threads
-            #    share the counters — so in-memory is genuinely equivalent
-            #    there, and failing the check would be crying wolf.
-            #  * Gunicorn with WEB_CONCURRENCY > 1, or Cloud Run, which adds
-            #    instances under load, multiplies the limit. On Cloud Run that
-            #    means an attacker raises their own allowance by attacking
-            #    harder, which inverts the point of a rate limit.
-            import os as _os
-            from .config import _int_env
-            workers = _int_env("WEB_CONCURRENCY", 1)
-            on_cloud_run = bool(_os.environ.get("K_SERVICE"))
-            if workers > 1 or on_cloud_run:
-                why = (f"WEB_CONCURRENCY={workers}" if workers > 1
-                       else "running on Cloud Run, which scales to several instances")
-                problems.append(
-                    f"rate limiter: in-memory but {why}, so each process keeps "
-                    "its own counters and the sign-in limit is multiplied — set "
-                    "RATELIMIT_STORAGE_URL to a Redis URL")
-            else:
-                notes.append("rate limiter: in-memory (valid for a single "
-                             "process; needs Redis before adding workers or "
-                             "deploying to Cloud Run)")
-        else:
-            notes.append("rate limiter: shared backend")
+        _check_rate_limiter(app, problems, notes)
 
         if not app.config.get("PUBLIC_BASE_URL"):
             notes.append("PUBLIC_BASE_URL: unset "
                          "(needed before confirmation emails can build links, "
                          "and required once BILLING_ENABLED=1)")
 
-        # ── billing ────────────────────────────────────────────────────────
-        # Every failure mode in here is silent at runtime: a test key takes no
-        # money, a product id instead of a price id fails at checkout with an
-        # opaque error, and a missing webhook secret means payments are taken
-        # and never applied. All of them would be discovered from a user
-        # complaint rather than from a log.
-        if not app.config.get("BILLING_ENABLED"):
-            notes.append("billing: disabled (BILLING_ENABLED=0 — everything is "
-                         "free and /api/billing/* refuses)")
-        else:
-            import os as _bos
-            on_cloud_run = bool(_bos.environ.get("K_SERVICE"))
-            secret_key   = app.config.get("STRIPE_SECRET_KEY")
-            webhook_sec  = app.config.get("STRIPE_WEBHOOK_SECRET")
+        _check_billing(app, problems, notes)
 
-            if not secret_key:
-                problems.append("STRIPE_SECRET_KEY is not set but billing is enabled")
-            elif secret_key.startswith("sk_test_") and on_cloud_run:
-                # The one that otherwise ships quietly and costs a month of
-                # revenue: everything works, nobody is ever charged.
-                problems.append(
-                    "Stripe is in TEST mode (sk_test_…) on a Cloud Run deploy — "
-                    "no real payment will ever be taken")
-            else:
-                mode = "test" if secret_key.startswith("sk_test_") else "live"
-                notes.append(f"Stripe key: present ({mode} mode)")
-
-            if not webhook_sec:
-                problems.append(
-                    "STRIPE_WEBHOOK_SECRET is not set — payments would be taken "
-                    "and never applied to an account")
-            else:
-                notes.append("Stripe webhook secret: present")
-
-            base = app.config.get("PUBLIC_BASE_URL")
-            if not base:
-                problems.append(
-                    "PUBLIC_BASE_URL is required when billing is enabled — it is "
-                    "what Checkout returns the user to after paying")
-            elif not base.startswith("https://") and on_cloud_run:
-                problems.append(f"PUBLIC_BASE_URL is not https:// ({base})")
-
-            expected = {
-                "STRIPE_PRICE_FIGHTER": app.config.get("PRICE_FIGHTER_PENCE"),
-                "STRIPE_PRICE_PRO":     app.config.get("PRICE_PRO_PENCE"),
-            }
-            currency = (app.config.get("BILLING_CURRENCY") or "gbp").lower()
-            for key, pence in expected.items():
-                price_id = app.config.get(key)
-                if not price_id:
-                    problems.append(f"{key} is not set but billing is enabled")
-                    continue
-                if not price_id.startswith("price_"):
-                    problems.append(
-                        f"{key}={price_id} is not a price id — a 'prod_…' "
-                        "product id here fails at checkout")
-                    continue
-                if not secret_key:
-                    continue
-                # One live call per price. This is the highest-value check in the
-                # block: it proves the key, the mode and the ids all agree, and
-                # that what Stripe will actually charge matches what the UI
-                # prints. A network failure is only a note — it says nothing
-                # about whether the configuration is right.
-                try:
-                    import stripe
-                    stripe.api_key = secret_key
-                    # to_dict(): retrieve() returns a StripeObject, and `.get`
-                    # on one raises AttributeError instead of returning None —
-                    # which the except below would report as an unverifiable
-                    # price rather than as the real problem.
-                    price = stripe.Price.retrieve(price_id).to_dict()
-                    bad = []
-                    if price.get("type") != "recurring":
-                        bad.append("not a recurring price")
-                    recurring = price.get("recurring") or {}
-                    if recurring.get("interval") != "year":
-                        bad.append(f"interval is {recurring.get('interval')}, not year")
-                    if (price.get("currency") or "").lower() != currency:
-                        bad.append(f"currency is {price.get('currency')}, not {currency}")
-                    if price.get("unit_amount") != pence:
-                        bad.append(f"Stripe charges {price.get('unit_amount')}p but "
-                                   f"the app displays {pence}p")
-                    if bad:
-                        problems.append(f"{key} ({price_id}): " + "; ".join(bad))
-                    else:
-                        notes.append(f"{key}: {pence}p/{currency}/year, matches Stripe")
-                except ImportError:
-                    problems.append("the stripe package is not installed but "
-                                    "billing is enabled")
-                except Exception as exc:
-                    notes.append(f"{key}: could not be verified against Stripe "
-                                 f"({type(exc).__name__}) — check manually")
-
-            # After the backfill nobody should be without a row. One that is
-            # means registration failed to build it, and that account's
-            # entitlement depends on whichever request self-heals it first.
-            try:
-                from .models.subscription import Subscription
-                from .models.user import User
-                orphans = (User.query
-                           .outerjoin(Subscription, Subscription.user_id == User.id)
-                           .filter(Subscription.id.is_(None))
-                           .count())
-                if orphans:
-                    problems.append(f"{orphans} account(s) have no subscription row")
-                else:
-                    notes.append("subscriptions: every account has a row")
-            except Exception as exc:
-                problems.append(f"could not count subscription rows: {exc} "
-                                "(has the migration been applied?)")
-
-        import os
-        dist = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "frontend", "dist", "index.html",
-        )
+        dist = os.path.join(_PROJECT_ROOT, "frontend", "dist", "index.html")
         if os.path.exists(dist):
             notes.append("frontend build: present")
         else:
@@ -394,3 +272,154 @@ def register_cli(app) -> None:
         if problems:
             raise SystemExit(1)
         click.echo(click.style("\nReady to serve.", fg="green"))
+
+
+# ── check-deploy helpers ──────────────────────────────────────────────────
+# Each appends to `problems` (fails the check) or `notes` (informational).
+
+def _check_rate_limiter(app, problems: list, notes: list) -> None:
+    """Flag an in-memory rate limiter where there is more than one process.
+
+    The memory backend keeps counters per process, so "5 sign-in attempts"
+    really means 5 per process. Waitress is a single process (its threads share
+    the counters), so that is fine locally. Gunicorn with WEB_CONCURRENCY > 1,
+    or Cloud Run scaling out, multiplies the limit.
+    """
+    if not app.config.get("RATELIMIT_STORAGE_URL", "memory://").startswith("memory"):
+        notes.append("rate limiter: shared backend")
+        return
+
+    from .config import _int_env
+    workers = _int_env("WEB_CONCURRENCY", 1)
+    if workers > 1 or _on_cloud_run():
+        why = (f"WEB_CONCURRENCY={workers}" if workers > 1
+               else "running on Cloud Run, which scales to several instances")
+        problems.append(
+            f"rate limiter: in-memory but {why}, so each process keeps "
+            "its own counters and the sign-in limit is multiplied — set "
+            "RATELIMIT_STORAGE_URL to a Redis URL")
+    else:
+        notes.append("rate limiter: in-memory (valid for a single "
+                     "process; needs Redis before adding workers or "
+                     "deploying to Cloud Run)")
+
+
+def _check_billing(app, problems: list, notes: list) -> None:
+    """Check the Stripe configuration end to end.
+
+    Every mistake caught here is silent at runtime: a test key takes no money,
+    a product id instead of a price id fails at checkout, and a missing webhook
+    secret means payments are taken but never applied to the account.
+    """
+    if not app.config.get("BILLING_ENABLED"):
+        notes.append("billing: disabled (BILLING_ENABLED=0 — everything is "
+                     "free and /api/billing/* refuses)")
+        return
+
+    on_cloud_run = _on_cloud_run()
+    secret_key   = app.config.get("STRIPE_SECRET_KEY")
+    webhook_sec  = app.config.get("STRIPE_WEBHOOK_SECRET")
+
+    # Secret key: present, and live mode when deployed.
+    if not secret_key:
+        problems.append("STRIPE_SECRET_KEY is not set but billing is enabled")
+    elif secret_key.startswith("sk_test_") and on_cloud_run:
+        problems.append(
+            "Stripe is in TEST mode (sk_test_…) on a Cloud Run deploy — "
+            "no real payment will ever be taken")
+    else:
+        mode = "test" if secret_key.startswith("sk_test_") else "live"
+        notes.append(f"Stripe key: present ({mode} mode)")
+
+    if not webhook_sec:
+        problems.append(
+            "STRIPE_WEBHOOK_SECRET is not set — payments would be taken "
+            "and never applied to an account")
+    else:
+        notes.append("Stripe webhook secret: present")
+
+    # Checkout sends the user back to PUBLIC_BASE_URL after paying.
+    base = app.config.get("PUBLIC_BASE_URL")
+    if not base:
+        problems.append(
+            "PUBLIC_BASE_URL is required when billing is enabled — it is "
+            "what Checkout returns the user to after paying")
+    elif not base.startswith("https://") and on_cloud_run:
+        problems.append(f"PUBLIC_BASE_URL is not https:// ({base})")
+
+    # Price ids: well-formed, and matching what the UI displays.
+    expected = {
+        "STRIPE_PRICE_FIGHTER": app.config.get("PRICE_FIGHTER_PENCE"),
+        "STRIPE_PRICE_PRO":     app.config.get("PRICE_PRO_PENCE"),
+    }
+    currency = (app.config.get("BILLING_CURRENCY") or "gbp").lower()
+    for key, pence in expected.items():
+        price_id = app.config.get(key)
+        if not price_id:
+            problems.append(f"{key} is not set but billing is enabled")
+            continue
+        if not price_id.startswith("price_"):
+            problems.append(
+                f"{key}={price_id} is not a price id — a 'prod_…' "
+                "product id here fails at checkout")
+            continue
+        if secret_key:
+            _check_stripe_price(key, price_id, pence, currency, secret_key,
+                                problems, notes)
+
+    # Every account should have a subscription row. One without means
+    # registration failed to create it.
+    try:
+        from .models.subscription import Subscription
+        from .models.user import User
+        orphans = (User.query
+                   .outerjoin(Subscription, Subscription.user_id == User.id)
+                   .filter(Subscription.id.is_(None))
+                   .count())
+        if orphans:
+            problems.append(f"{orphans} account(s) have no subscription row")
+        else:
+            notes.append("subscriptions: every account has a row")
+    except Exception as exc:
+        problems.append(f"could not count subscription rows: {exc} "
+                        "(has the migration been applied?)")
+
+
+def _check_stripe_price(key, price_id, pence, currency, secret_key,
+                        problems: list, notes: list) -> None:
+    """Fetch one price from Stripe and compare it with what the UI displays.
+
+    Proves the key, mode and id agree, and that Stripe will charge what the
+    app shows. A network failure is only a note: it says nothing about
+    whether the configuration is right.
+    """
+    try:
+        import stripe
+        stripe.api_key = secret_key
+        # to_dict() because `.get` on a StripeObject raises AttributeError
+        # instead of returning None.
+        price = stripe.Price.retrieve(price_id).to_dict()
+    except ImportError:
+        problems.append("the stripe package is not installed but "
+                        "billing is enabled")
+        return
+    except Exception as exc:
+        notes.append(f"{key}: could not be verified against Stripe "
+                     f"({type(exc).__name__}) — check manually")
+        return
+
+    bad = []
+    if price.get("type") != "recurring":
+        bad.append("not a recurring price")
+    recurring = price.get("recurring") or {}
+    if recurring.get("interval") != "year":
+        bad.append(f"interval is {recurring.get('interval')}, not year")
+    if (price.get("currency") or "").lower() != currency:
+        bad.append(f"currency is {price.get('currency')}, not {currency}")
+    if price.get("unit_amount") != pence:
+        bad.append(f"Stripe charges {price.get('unit_amount')}p but "
+                   f"the app displays {pence}p")
+    if bad:
+        problems.append(f"{key} ({price_id}): " + "; ".join(bad))
+    else:
+        notes.append(f"{key}: {pence}p/{currency}/year, matches Stripe")

@@ -1,13 +1,25 @@
+"""Event and venue routes, under /api/...
+
+  GET    /venues               list
+  POST   /venues               create               (promoter, admin)
+  GET    /events               list, newest first
+  POST   /events               create (optionally with a new venue inline)
+  GET    /events/<id>          one event
+  PUT    /events/<id>          edit                 (promoter, admin)
+  DELETE /events/<id>          delete               (promoter, admin)
+
+The fight card for an event is in events.py.
+"""
+
 from datetime import datetime
 from flask import Blueprint, jsonify, request
 from ..extensions import db
-from ..models.event import Event, Venue
+from ..models.event import Event, EventBout, Venue
 from ..helpers import (err, require_json, login_required, roles_required, subscription_required,
                        clean_str, current_user)
 from ..validation import clean_int, clean_text_block
 
-# A card smaller than this is not really a card; larger than this and no
-# amateur promotion is running it in one night.
+# Allowed range for an event's max_bouts.
 MIN_BOUTS, MAX_BOUTS = 5, 20
 
 # Match the column widths, so an over-long value is refused with a readable
@@ -29,6 +41,7 @@ def parse_max_bouts(value):
         return None, f"Maximum bouts must be between {MIN_BOUTS} and {MAX_BOUTS}."
     return n, None
 
+
 event_crud_bp = Blueprint("event_crud", __name__, url_prefix="/api")
 
 
@@ -37,6 +50,7 @@ event_crud_bp = Blueprint("event_crud", __name__, url_prefix="/api")
 @event_crud_bp.route("/venues", methods=["GET"])
 @login_required
 def list_venues():
+    """All venues, by name."""
     venues = Venue.query.order_by(Venue.name).all()
     return jsonify({"venues": [v.to_dict() for v in venues]})
 
@@ -50,9 +64,7 @@ def _build_venue(data: dict) -> Venue:
     name = clean_str(data.get("name"), max_len=MAX_VENUE_NAME, field="Venue name")
     if not name:
         raise ValueError("A venue needs a name.")
-    # Upper bound as well as a type: the largest stadium on earth holds about
-    # 114,000, so anything past 200,000 is a typo or a probe, and it feeds a
-    # capacity figure promoters plan against.
+    # The largest stadium holds ~114,000, so anything past 200,000 is a typo.
     capacity = clean_int(data.get("capacity"), field="Capacity",
                          minimum=1, maximum=200_000)
     return Venue(
@@ -68,12 +80,7 @@ def _build_venue(data: dict) -> Venue:
 @roles_required("promoter", "admin")
 @subscription_required
 def create_venue():
-    """Promoters can add venues.
-
-    This was admin-only, which made the event form unusable for the role it
-    exists for: a promoter could pick a venue but never create one, so on a new
-    deployment with no venues seeded, "No venue" was the only option.
-    """
+    """Add a venue (promoters and admins)."""
     data, error = require_json("name")
     if error:
         return error
@@ -91,10 +98,8 @@ def create_venue():
 def _event_dict(ev: Event) -> dict:
     """Serialise an event with its venue flattened onto it.
 
-    `venue_location` is the part people actually recognise — "Places like the
-    Phoenix Centre mean nothing without the town" — so the town/address is
-    carried alongside the name rather than leaving the client to fetch venues
-    separately and join them.
+    Adds venue_name/city/address and `venue_location` ("address, city") so
+    the client does not have to fetch and join venues itself.
     """
     d = ev.to_dict()
     if ev.venue:
@@ -110,23 +115,21 @@ def _event_dict(ev: Event) -> dict:
 @event_crud_bp.route("/events", methods=["GET"])
 @login_required
 def list_events():
+    """Every event, newest date first (undated events last)."""
     events = Event.query.order_by(Event.date.desc().nullslast(), Event.created_at.desc()).all()
-    result = []
-    for ev in events:
-        result.append(_event_dict(ev))
-    return jsonify({"events": result})
+    return jsonify({"events": [_event_dict(ev) for ev in events]})
 
 
 @event_crud_bp.route("/events", methods=["POST"])
 @roles_required("promoter", "admin")
 @subscription_required
 def create_event():
+    """Create an event. Pass `venue_id`, or a `venue` object to create one."""
     data, error = require_json("name")
     if error:
         return error
 
-    # A new venue can be created as part of the event, so a promoter setting up
-    # their first event is not blocked behind an empty venue list.
+    # A new venue can be created inline with the event.
     venue_id = int(data["venue_id"]) if data.get("venue_id") else None
     new_venue = data.get("venue")
     if venue_id is None and isinstance(new_venue, dict) and (new_venue.get("name") or "").strip():
@@ -157,24 +160,24 @@ def create_event():
     )
     db.session.add(ev)
     db.session.commit()
-    d = _event_dict(ev)
-    return jsonify({"event": d}), 201
+    return jsonify({"event": _event_dict(ev)}), 201
 
 
 @event_crud_bp.route("/events/<int:event_id>", methods=["GET"])
 @login_required
 def get_event(event_id):
+    """One event."""
     ev = db.session.get(Event, event_id)
     if not ev:
         return err("Event not found.", 404)
-    d = _event_dict(ev)
-    return jsonify({"event": d})
+    return jsonify({"event": _event_dict(ev)})
 
 
 @event_crud_bp.route("/events/<int:event_id>", methods=["PUT"])
 @roles_required("promoter", "admin")
 @subscription_required
 def update_event(event_id):
+    """Partial update: only fields present in the body change."""
     ev = db.session.get(Event, event_id)
     if not ev:
         return err("Event not found.", 404)
@@ -192,23 +195,21 @@ def update_event(event_id):
         max_bouts, mb_error = parse_max_bouts(data["max_bouts"])
         if mb_error:
             return err(mb_error)
-        # Shrinking a card below what it already holds would strand bouts with
-        # nowhere to sit, so it is refused rather than silently dropping them.
-        from ..models.event import EventBout
+        # Can't shrink below the number of bouts already on the card.
         current = EventBout.query.filter_by(event_id=str(ev.id)).count()
         if max_bouts is not None and max_bouts < current:
             return err(f"This card already has {current} bouts. "
                        f"Remove some before lowering the maximum to {max_bouts}.")
         ev.max_bouts = max_bouts
     db.session.commit()
-    d = _event_dict(ev)
-    return jsonify({"event": d})
+    return jsonify({"event": _event_dict(ev)})
 
 
 @event_crud_bp.route("/events/<int:event_id>", methods=["DELETE"])
 @roles_required("promoter", "admin")
 @subscription_required
 def delete_event(event_id):
+    """Delete an event."""
     ev = db.session.get(Event, event_id)
     if not ev:
         return err("Event not found.", 404)

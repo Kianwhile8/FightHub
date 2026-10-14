@@ -1,3 +1,9 @@
+"""Configuration classes, read from environment variables (.env locally).
+
+`Config` holds everything shared; `DevelopmentConfig` and `ProductionConfig`
+differ only in cookie security. See .env.example for every variable.
+"""
+
 import os
 from datetime import timedelta
 
@@ -13,6 +19,7 @@ def _bool_env(name: str, default: bool) -> bool:
 
 
 def _int_env(name: str, default: int) -> int:
+    """Read an integer from the environment, falling back to `default`."""
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
         return default
@@ -55,7 +62,7 @@ class Config:
     GCS_PUBLIC_URLS = _bool_env("GCS_PUBLIC_URLS", False)
 
     # ── outbound email (confirmation links, password resets) ──────────────
-    # Not wired to a provider yet. PUBLIC_BASE_URL is what verification links
+    # Not wired to an email provider yet. PUBLIC_BASE_URL is what verification links
     # are built from, so it must be the address users actually reach — behind a
     # proxy the app cannot reliably infer it from the request.
     PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
@@ -65,11 +72,10 @@ class Config:
     REQUIRE_VERIFIED_EMAIL = _bool_env("REQUIRE_VERIFIED_EMAIL", False)
 
     # ── billing (Stripe) ──────────────────────────────────────────────────
-    # Off by default so the whole feature can ship, deploy and be exercised
-    # before a single charge is possible. With it off, has_active_access()
-    # returns True for everybody and /api/billing/* refuses with 503. That one
-    # flag is checked in exactly one place — app/helpers.py — rather than being
-    # threaded through the two dozen routes it governs.
+    # Off by default, so the app can be deployed and tested before any charge
+    # is possible. With it off, has_active_access() returns True for everybody
+    # and /api/billing/* returns 503. The flag is checked in exactly one place:
+    # has_active_access() in app/helpers.py.
     BILLING_ENABLED       = _bool_env("BILLING_ENABLED", False)
     STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY")
     STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
@@ -95,18 +101,15 @@ class Config:
     BILLING_CURRENCY      = os.environ.get("BILLING_CURRENCY", "gbp")
 
     SESSION_COOKIE_HTTPONLY  = True
-    # "Lax", not "Strict", and billing now depends on that: the user comes back
-    # from checkout.stripe.com as a top-level GET navigation, which carries a
-    # Lax cookie but not a Strict one. Under Strict they would land on
-    # /billing?checkout=success logged out, having just paid.
+    # Must be "Lax", not "Strict": the user returns from checkout.stripe.com
+    # via a top-level GET, which carries a Lax cookie but not a Strict one.
+    # Under Strict they would land on /billing?checkout=success logged out.
     SESSION_COOKIE_SAMESITE  = "Lax"
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
 
-    # CSRF is enforced. This was previously False, which does not merely relax
-    # the check — it switches CSRFProtect's before_request hook off entirely,
-    # so no token was ever validated on any request. The frontend has been
-    # fetching /api/csrf-token and sending X-CSRFToken on every mutating
-    # request the whole time; the server simply ignored it.
+    # CSRF is checked on every mutating request. Do not set this to False: that
+    # switches CSRFProtect's check off entirely, not just loosens it. The
+    # frontend fetches /api/csrf-token and sends it as X-CSRFToken.
     WTF_CSRF_CHECK_DEFAULT = True
     # The header the frontend already sends (api/client.js).
     WTF_CSRF_HEADERS = ["X-CSRFToken", "X-CSRF-Token"]

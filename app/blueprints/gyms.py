@@ -1,8 +1,25 @@
+"""Gym routes, under /api/gyms/...
+
+  GET    ""                                list (?mine=1 for the coach's own)
+  POST   ""                                create             (coach, admin)
+  GET    /<gym_id>                         one gym
+  PUT    /<gym_id>                         edit               (owner, admin)
+  DELETE /<gym_id>                         delete             (owner, admin)
+  GET    /<gym_id>/fighters                roster, all sports, with Elo and rank
+  GET    /<gym_id>/candidates              gymless fighters to recruit (owner, admin)
+  POST   /<gym_id>/fighters/<id>?sport=    add a fighter      (owner, admin)
+  DELETE /<gym_id>/fighters/<id>?sport=    remove a fighter   (owner, admin)
+
+Ownership is checked by AuthService._assert_gym_owner.
+"""
+
 from flask import Blueprint, jsonify, request, current_app
 from ..helpers import (
     VALID_SPORTS, get_db, err, require_json, current_user,
     login_required, roles_required, subscription_required, _apply_privacy
 )
+from ..services.matchmaker import elo_band
+from .fighters import TOP_RANKS_SHOWN
 
 gyms_bp = Blueprint("gyms", __name__, url_prefix="/api/gyms")
 
@@ -10,14 +27,10 @@ gyms_bp = Blueprint("gyms", __name__, url_prefix="/api/gyms")
 @gyms_bp.route("", methods=["GET"])
 @login_required
 def list_gyms():
-    """All gyms, or just the caller's own with ?mine=1.
+    """All gyms (optionally ?county=), or only a coach's own with ?mine=1.
 
-    Coaches used to be served only their own gyms here, which meant the one
-    role that most needs to see the wider scene — to find opponents, or to know
-    which gyms are nearby — was the only role that could not. The listing now
-    returns everything and the client separates "my gyms" from the rest;
-    ?mine=1 is for places that genuinely need only the caller's own, such as
-    the gym picker on the new-fighter form.
+    Everyone sees every gym; the client separates "my gyms" itself. ?mine=1 is
+    for places that need only the caller's own, like the new-fighter gym picker.
     """
     user   = current_user()
     county = request.args.get("county", "").strip() or None
@@ -33,6 +46,7 @@ def list_gyms():
 @roles_required("coach", "admin")
 @subscription_required
 def create_gym():
+    """Create a gym owned by the caller."""
     data, error = require_json("name")
     if error:
         return error
@@ -51,6 +65,7 @@ def create_gym():
 @gyms_bp.route("/<int:gym_id>", methods=["GET"])
 @login_required
 def get_gym(gym_id):
+    """One gym."""
     gym = current_app.auth_db.get_gym(gym_id)
     if not gym:
         return err("Gym not found.", 404)
@@ -61,6 +76,7 @@ def get_gym(gym_id):
 @roles_required("coach", "admin")
 @subscription_required
 def update_gym(gym_id):
+    """Edit name / location / county (owner or admin)."""
     data = request.get_json(silent=True) or {}
     try:
         gym = current_app.auth_db.update_gym(
@@ -79,6 +95,7 @@ def update_gym(gym_id):
 @roles_required("coach", "admin")
 @subscription_required
 def delete_gym(gym_id):
+    """Delete a gym (owner or admin). Its fighters become gymless."""
     try:
         current_app.auth_db.delete_gym(gym_id, current_user()["id"])
         return jsonify({"message": "Gym deleted successfully."})
@@ -89,13 +106,12 @@ def delete_gym(gym_id):
 @gyms_bp.route("/<int:gym_id>/fighters", methods=["GET"])
 @login_required
 def gym_fighters(gym_id):
+    """The gym's roster across every sport, each with Elo, band and rank."""
     gym = current_app.auth_db.get_gym(gym_id)
     if not gym:
         return err("Gym not found.", 404)
-    from ..services.matchmaker import elo_band
     viewer  = current_user()
     results = []
-    from .fighters import TOP_RANKS_SHOWN
     for sport in VALID_SPORTS:
         with get_db(sport) as db:
             fighters = db.get_fighters_by_gym(gym_id)
@@ -123,17 +139,13 @@ def gym_fighters(gym_id):
 
 @gyms_bp.route("/<int:gym_id>/candidates", methods=["GET"])
 @roles_required("coach", "admin")
-# A GET, but a recruiting tool: its only purpose is the assignment that follows
-# it, and it scans all four disciplines to produce the list. Gated with the
-# write it serves rather than with the reads.
 @subscription_required
 def gym_candidates(gym_id):
-    """Fighters this gym could take on, across every discipline.
+    """Fighters this gym could take on, across every sport (max 50, ?q= search).
 
-    Only fighters with no gym are offered. Moving someone who already trains
-    elsewhere is a transfer, not an add, and silently reassigning them from
-    another coach's roster is not something a search box should do quietly —
-    so those are filtered out rather than shown greyed-out and clickable.
+    Only gymless fighters are offered: taking a fighter from another gym is
+    a transfer their current coach must start. Paid-only, like the
+    assignment it leads to.
     """
     try:
         current_app.auth_db._assert_gym_owner(gym_id, current_user()["id"])
@@ -157,6 +169,7 @@ def gym_candidates(gym_id):
 @roles_required("coach", "admin")
 @subscription_required
 def assign_fighter_to_gym(gym_id, fighter_id):
+    """Add a gymless fighter to this gym."""
     try:
         current_app.auth_db._assert_gym_owner(gym_id, current_user()["id"])
     except ValueError as e:
@@ -170,9 +183,7 @@ def assign_fighter_to_gym(gym_id, fighter_id):
             fighter = db.get_fighter(fighter_id)
             if not fighter:
                 return err(f"Fighter {fighter_id} not found.", 404)
-            # Owning a gym is authority over that gym, not over every fighter.
-            # Without this a coach could pull a rival's roster across one
-            # fighter at a time, and the losing coach would never be told.
+            # A coach may not take a fighter from another gym.
             current_gym = fighter.get("gym_id")
             if current_gym and current_gym != gym_id and user["role"] != "admin":
                 return err(
@@ -188,6 +199,7 @@ def assign_fighter_to_gym(gym_id, fighter_id):
 @roles_required("coach", "admin")
 @subscription_required
 def remove_fighter_from_gym(gym_id, fighter_id):
+    """Make a fighter gymless."""
     try:
         current_app.auth_db._assert_gym_owner(gym_id, current_user()["id"])
     except ValueError as e:

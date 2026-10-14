@@ -1,10 +1,11 @@
+"""Fighter profiles, their W/L/D totals, and experience declared in other sports."""
+
 from datetime import datetime, date as _date
 from ..extensions import db
 
-VALID_SPORTS = ("kickboxing", "mma", "boxing")
-
 
 def _compute_age(dob):
+    """Age in whole years today, or None if no date of birth is known."""
     if not dob:
         return None
     today = _date.today()
@@ -12,6 +13,11 @@ def _compute_age(dob):
 
 
 class Fighter(db.Model):
+    """One fighter profile in one sport.
+
+    A person competing in two sports has two Fighter rows, linked through
+    `user_id` when they have an account.
+    """
     __tablename__ = "fighters"
     __table_args__ = (
         db.CheckConstraint("sport IN ('kickboxing','mma','boxing','muaythai')", name="ck_fighters_sport"),
@@ -24,10 +30,8 @@ class Fighter(db.Model):
     date_of_birth = db.Column(db.Date, nullable=True)
     weight        = db.Column(db.Float, nullable=False)
     sport         = db.Column(db.String(20), nullable=False)
-    # Combat sports are contested in single-sex divisions, so this gates both
-    # matchmaking and bout creation. Nullable because fighters created before
-    # the field existed have no value — those are treated as "not stated"
-    # rather than as a match for everyone.
+    # Gates matchmaking and bout creation (single-sex divisions). NULL means
+    # "not stated", which is never treated as a match for everyone.
     gender        = db.Column(db.String(10), nullable=True)
     gym_id        = db.Column(
         db.Integer,
@@ -83,6 +87,10 @@ class Fighter(db.Model):
 
 
 class FighterRecord(db.Model):
+    """Running win/loss/draw totals, one row per fighter.
+
+    Kept in step with FightHistory by FighterService._tally().
+    """
     __tablename__ = "fighter_records"
     __table_args__ = (
         db.CheckConstraint("wins   >= 0", name="ck_records_wins"),

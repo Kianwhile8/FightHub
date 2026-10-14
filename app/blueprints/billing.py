@@ -53,12 +53,8 @@ def _billing_off():
 @billing_bp.route("/status", methods=["GET"])
 @login_required
 def status():
-    """The signed-in user's entitlement, plus both plans' prices.
-
-    Deliberately the same envelope that /api/auth/me returns under
-    `entitlement`, so the billing page and the boot path cannot drift apart
-    about what state an account is in.
-    """
+    """The signed-in user's entitlement (same envelope as /api/auth/me),
+    plus both plans' prices."""
     user = current_user()
     return jsonify({
         "entitlement": current_app.billing_db.entitlement(user),
@@ -74,9 +70,8 @@ def status():
 def checkout():
     """Start a Stripe Checkout session and hand back its URL.
 
-    The request body is ignored entirely. The price is derived server-side from
-    the signed-in user's role, because a client that could name its own price id
-    could buy the £10 fighter plan while holding a coach account.
+    The request body is ignored: the price always comes from the user's role
+    (BillingService.price_for_role), so a client cannot choose a cheaper one.
     """
     if not current_app.config.get("BILLING_ENABLED"):
         return _billing_off()
@@ -123,19 +118,17 @@ def portal():
         return err("Could not open the billing portal. Please try again shortly.", 502)
 
 
-# CSRF exemption goes on this view, not the blueprint: /checkout and /portal are
-# ordinary SPA POSTs and must keep their token check. Stripe cannot send one.
 @billing_bp.route("/webhook", methods=["POST"])
-@csrf.exempt
-# Exempt from rate limiting too. Stripe bursts well past 60/minute when it
-# retries a backlog, and answering it with 429 produces more retries, not fewer.
-@limiter.exempt
+@csrf.exempt     # Stripe cannot send a CSRF token; the signature check replaces it
+@limiter.exempt  # Stripe bursts when retrying; a 429 only causes more retries
 def webhook():
     """Apply a Stripe event to the subscription it concerns.
 
-    Returns 200 for anything safely recorded — including event types this app
-    does not act on — so Stripe stops retrying. A 500 is reserved for a genuinely
-    transient failure that is worth retrying.
+    Steps: verify the signature -> record the event (idempotency) -> apply it
+    (_apply) -> mark it processed.
+
+    Returns 200 for anything safely recorded, including event types we ignore,
+    so Stripe stops retrying. 500 only for failures worth retrying.
     """
     if not current_app.config.get("BILLING_ENABLED"):
         # 200, not 503: a disabled deployment should not make Stripe retry for
@@ -155,12 +148,8 @@ def webhook():
         # the bytes and fails verification.
         stripe.Webhook.construct_event(
             raw, request.headers.get("Stripe-Signature", ""), secret)
-        # construct_event's return value is a StripeObject, and `.get` on one
-        # raises AttributeError rather than returning None ("'get' is a dict
-        # method, but a Event is not a dict"). Rather than depend on which
-        # conversion helper the installed SDK offers — to_dict_recursive does
-        # not exist in stripe 16 — parse the bytes we already have. The call
-        # above is what authenticates them; this is just reading them.
+        # Read the (now verified) bytes as plain JSON, because `.get` on the
+        # StripeObject construct_event returns raises AttributeError.
         event = json.loads(raw)
     except ValueError:
         # Unparseable body.
@@ -227,6 +216,7 @@ def webhook():
 
 
 def _apply(event_type: str, obj: dict) -> None:
+    """Update our Subscription row for one handled Stripe event type."""
     billing = current_app.billing_db
 
     if event_type == "checkout.session.completed":
@@ -268,12 +258,9 @@ def _apply(event_type: str, obj: dict) -> None:
 
 
 def _summarise(event: dict, obj: dict) -> str:
-    """A trimmed record of the event, never the raw payload.
+    """A trimmed record of the event: ids and status only.
 
-    Raw Stripe events carry the customer's email and billing address. Storing
-    them would put a new category of personal data into a new table, and drag a
-    retention entry into the privacy notice, for no operational gain — the ids
-    below are all that is ever needed to trace what happened.
+    Never the raw payload, which contains the customer's email and address.
     """
     return json.dumps({
         "id":        event.get("id"),

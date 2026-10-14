@@ -7,21 +7,19 @@ import { useAuthStore } from '../../store/auth'
 import { ENGLISH_COUNTIES } from '../../constants/counties'
 import Spinner from '../../components/Spinner'
 import PaywallGate from '../../components/PaywallGate'
-import { useEntitlement } from '../../hooks/useEntitlement'
 
+// Every gym, split into the coach's own and everyone else's; coaches can
+// create a gym here.
 export default function GymsList() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { canWrite } = useEntitlement()
   const qc = useQueryClient()
   const [showForm, setShowForm]   = useState(false)
   const [county, setCounty]       = useState('')
 
-  // Role eligibility and current entitlement, kept apart: a coach sees a
-  // locked button they can act on; a fighter sees nothing, because there is
-  // nothing they could do about it.
+  // Who may create gyms. The subscription check is done by <PaywallGate>, so
+  // a lapsed coach sees a locked button and a fighter sees nothing.
   const roleCanCreate = ['coach', 'admin'].includes(user?.role)
-  const canCreate = roleCanCreate && canWrite
 
   const { data, isLoading } = useQuery({
     queryKey: ['gyms', county],

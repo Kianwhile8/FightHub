@@ -1,27 +1,27 @@
+"""Rankings and headline stats.
+
+  GET /api/<sport>/rankings   every fighter in the sport, highest Elo first
+  GET /api/stats              fighter counts per sport
+
+Matchmaking (/api/<sport>/fighters/<id>/matches) lives in fighters.py.
+"""
+
 from flask import Blueprint, jsonify, current_app
 from ..helpers import (
     VALID_SPORTS, get_db, err, current_user, login_required, _apply_privacy
 )
+from ..services.matchmaker import elo_band
 
 rankings_bp = Blueprint("rankings", __name__, url_prefix="/api")
-
-# Removed from this module: a second registration of
-# /api/<sport>/fighters/<id>/matches, which carried no @login_required. The
-# same rule is registered in fighters.py *with* authentication, and because
-# fighters_bp is registered first in the app factory that protected handler is
-# the one Flask matched — so this copy was unreachable. It was still a hazard:
-# swapping two register_blueprint lines would have silently made the
-# unauthenticated version live. The route continues to be served by
-# fighters.py.
 
 
 @rankings_bp.route("/<sport>/rankings", methods=["GET"])
 @login_required
 def get_rankings(sport):
+    """Every fighter in the sport, ranked by Elo (hidden records masked)."""
     if sport not in VALID_SPORTS:
         return err(f"Unknown sport '{sport}'", 404)
     try:
-        from ..services.matchmaker import elo_band
         with get_db(sport) as db:
             fighters    = db.get_all_fighters()
             elo_ratings = db.elo_pool()
@@ -39,9 +39,7 @@ def get_rankings(sport):
             f["rank"] = i + 1
         return jsonify({"sport": sport, "rankings": ranked})
     except Exception:
-        # Was `return err(str(e))`, which handed the caller the raw exception
-        # text — table names, column names and occasionally a connection string
-        # fragment. The detail belongs in the log, not in the response.
+        # Log the detail; never send raw exception text to the client.
         current_app.logger.exception("rankings failed for sport=%s", sport)
         return err("Could not build the rankings just now.", 500)
 
@@ -49,6 +47,7 @@ def get_rankings(sport):
 @rankings_bp.route("/stats", methods=["GET"])
 @login_required
 def stats():
+    """{sport: fighter count, ..., "total": n}."""
     totals = {}
     for sport in VALID_SPORTS:
         with get_db(sport) as db:

@@ -1,3 +1,10 @@
+"""Application factory.
+
+`create_app()` builds the Flask app: loads config, wires up extensions,
+attaches the auth and billing services, registers every blueprint, and adds
+the security headers, error handlers and SPA catch-all route.
+"""
+
 import os
 from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.security import safe_join
@@ -9,7 +16,12 @@ from .validation import ValidationError
 load_dotenv()
 
 
-def create_app(config_name: str = None) -> Flask:
+def create_app(config_name: str | None = None) -> Flask:
+    """Build and return a configured Flask app.
+
+    `config_name` is "development" or "production"; when omitted it is chosen
+    from FLASK_DEBUG.
+    """
     if config_name is None:
         config_name = "development" if os.environ.get("FLASK_DEBUG") == "1" else "production"
 
@@ -56,22 +68,21 @@ def create_app(config_name: str = None) -> Flask:
     limiter.init_app(app)
     csrf.init_app(app)
 
-    # Import all models so Flask-Migrate sees them. A model missing from here
-    # is invisible to `flask db migrate` autogenerate, which then writes a
-    # revision that silently drops its table.
+    # Import every model so Flask-Migrate can see them. A model that is never
+    # imported is invisible to `flask db migrate` autogenerate, which then
+    # writes a revision that drops its table. The names are unused on purpose.
     with app.app_context():
-        from .models import User, Gym, Fighter, FighterRecord, PriorExperience
-        from .models import FightHistory
-        from .models import Venue, Event, EventBout, EventRegistration
-        from .models import DemoRecord, DeletionRequest
-        from .models import Subscription, WebhookEvent
+        from .models import User, Gym, Fighter, FighterRecord, PriorExperience  # noqa: F401
+        from .models import FightHistory                                        # noqa: F401
+        from .models import Venue, Event, EventBout, EventRegistration          # noqa: F401
+        from .models import DemoRecord, DeletionRequest                         # noqa: F401
+        from .models import Subscription, WebhookEvent                          # noqa: F401
 
-    # Auth service (SQLAlchemy-backed, same interface as old authDB)
+    # Services live on the app object, one instance each, and are reached from
+    # any request as `current_app.auth_db` and `current_app.billing_db`.
     from .services.auth_service import AuthService
     app.auth_db = AuthService()
 
-    # Entitlement and billing. Same pattern as auth_db: one instance on the app,
-    # reached through current_app.billing_db.
     from .services.billing_service import BillingService
     app.billing_db = BillingService()
 
@@ -96,16 +107,14 @@ def create_app(config_name: str = None) -> Flask:
     app.register_blueprint(uploads_bp)
     app.register_blueprint(billing_bp)
 
-    import os as _os
-    _os.makedirs(app.config.get("UPLOAD_FOLDER", "uploads"), exist_ok=True)
+    os.makedirs(app.config.get("UPLOAD_FOLDER", "uploads"), exist_ok=True)
 
     @app.after_request
     def security_headers(response):
-        """Headers that cost nothing and close off whole classes of attack.
+        """Add security headers to every response.
 
-        None of these were present. The Content-Security-Policy is the load
-        bearing one: it means an injected <script> does not run even if
-        something does manage to get one into the page, and `frame-ancestors
+        The Content-Security-Policy does most of the work: an injected <script>
+        will not run even if one gets into the page, and `frame-ancestors
         'none'` stops the app being framed for clickjacking.
         """
         csp_header = ("Content-Security-Policy-Report-Only"
@@ -118,21 +127,16 @@ def create_app(config_name: str = None) -> Flask:
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        # Nothing here uses any of these, so decline them all.
+        # The app uses none of these browser features, so disable them all.
         #
-        # `payment=()` stays even though the app now takes subscriptions. It
-        # disables the Payment Request API — `new PaymentRequest(...)`, which is
-        # what an embedded Apple Pay or Google Pay button uses inside this
-        # document. Stripe Checkout is a top-level navigation to
-        # checkout.stripe.com, and a Permissions-Policy applies to the document
-        # that sent it, not to a document the browser navigates away to. So
-        # billing is unaffected, and relaxing this would buy nothing.
+        # `payment=()` does not affect billing: it only disables the in-page
+        # Payment Request API. Stripe Checkout is a full-page redirect to
+        # checkout.stripe.com, which this header does not govern.
         #
-        # The headers that DO constrain the billing implementation are in
-        # CSP_POLICY: `frame-src 'none'` rules out embedded Checkout (redirect
-        # only), `script-src 'self'` means js.stripe.com is never loaded, and
-        # `form-action 'self'` means the redirect must be
-        # window.location.assign(), not a form POST to Stripe.
+        # The headers that DO constrain billing are in CSP_POLICY (config.py):
+        # `frame-src 'none'` rules out embedded Checkout, `script-src 'self'`
+        # means js.stripe.com is never loaded, and `form-action 'self'` means
+        # the redirect must be window.location.assign(), not a form POST.
         response.headers.setdefault(
             "Permissions-Policy",
             "geolocation=(), camera=(), microphone=(), payment=(), usb=(), "
@@ -215,6 +219,7 @@ def create_app(config_name: str = None) -> Flask:
 
     @app.errorhandler(413)
     def handle_too_large(e):
+        """An upload over MAX_CONTENT_LENGTH."""
         limit_mb = app.config.get("MAX_CONTENT_LENGTH", 0) // (1024 * 1024)
         return jsonify({"error": f"That file is too large. The limit is {limit_mb} MB."}), 413
 
@@ -224,8 +229,7 @@ def create_app(config_name: str = None) -> Flask:
 
         419 rather than 400 because the frontend already special-cases it: it
         drops its cached token, fetches a fresh one and tells the user to
-        refresh (see api/client.js). Until now that code was unreachable,
-        because no token was ever checked.
+        refresh (see frontend/src/api/client.js).
         """
         return jsonify({
             "error": "Your session token has expired or is missing. "
@@ -241,11 +245,13 @@ def create_app(config_name: str = None) -> Flask:
     @app.route("/api/csrf-token")
     @limiter.exempt   # fetched before the first mutating request of a session
     def csrf_token():
+        """Give the SPA a CSRF token to send back in the X-CSRFToken header."""
         return jsonify({"token": generate_csrf()})
 
     @app.route("/api/health")
     @limiter.exempt   # polled by the platform's health check, not by users
     def health():
+        """Liveness check. Always 200; `db` says whether Postgres answers."""
         try:
             db.session.execute(db.text("SELECT 1"))
             db_status = "ok"

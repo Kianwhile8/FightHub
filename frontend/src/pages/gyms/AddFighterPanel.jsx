@@ -5,8 +5,7 @@ import { apiFetch } from '../../api/client'
 import { ENGLISH_COUNTIES } from '../../constants/counties'
 import { SPORTS, SPORT_LABEL } from '../../constants/sports'
 import { FIGHTER_GENDER_OPTIONS } from '../../constants/gender'
-
-const wordCount = (t) => (t ? t.trim().split(/\s+/).filter(Boolean).length : 0)
+import { wordCount, MAX_BIO_WORDS } from '../../utils/fighter'
 
 /**
  * Adds fighters to a gym, either by creating them or by attaching an existing
@@ -64,7 +63,7 @@ function NewFighterForm({ gymId, onSaved }) {
     e.preventDefault()
     const fd = new FormData(e.target)
     const desc = fd.get('description').trim()
-    if (wordCount(desc) > 200) { toast.error('Description must be 200 words or fewer.'); return }
+    if (wordCount(desc) > MAX_BIO_WORDS) { toast.error(`Description must be ${MAX_BIO_WORDS} words or fewer.`); return }
     addMutation.mutate({
       name:          fd.get('name').trim(),
       date_of_birth: fd.get('date_of_birth') || null,
@@ -119,12 +118,12 @@ function NewFighterForm({ gymId, onSaved }) {
         <label className="form-label">Description</label>
         <textarea name="description" rows={2} placeholder="Optional fighter bio…"
           onInput={e => setDescWords(wordCount(e.target.value))} style={{ resize: 'vertical' }} />
-        <div style={{ fontSize: 11, marginTop: 3, color: descWords > 200 ? 'var(--danger)' : 'var(--muted)' }}>
-          {descWords} / 200 words
+        <div style={{ fontSize: 11, marginTop: 3, color: descWords > MAX_BIO_WORDS ? 'var(--danger)' : 'var(--muted)' }}>
+          {descWords} / {MAX_BIO_WORDS} words
         </div>
       </div>
       <button type="submit" className="btn btn-primary btn-sm"
-        disabled={addMutation.isPending || descWords > 200}>
+        disabled={addMutation.isPending || descWords > MAX_BIO_WORDS}>
         {addMutation.isPending ? 'Adding…' : 'Add to gym'}
       </button>
     </form>

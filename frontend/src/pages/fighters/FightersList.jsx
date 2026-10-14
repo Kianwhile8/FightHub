@@ -15,8 +15,10 @@ import { WEIGHT_STEPS, weightLabel } from '../../constants/weights'
 import {
   FIGHTER_GENDER_OPTIONS, GENDER_FILTER_OPTIONS, genderLabel,
 } from '../../constants/gender'
+import { RankPill } from '../../components/Pills'
+import { recordLabel, wordCount, MAX_BIO_WORDS } from '../../utils/fighter'
 
-const wordCount = (t) => t ? t.trim().split(/\s+/).filter(Boolean).length : 0
+// Browse and search one sport's fighters; coaches can add a fighter here.
 
 export default function FightersList() {
   const { sport } = useParams()
@@ -24,10 +26,9 @@ export default function FightersList() {
   const { user }  = useAuthStore()
   const { canWrite } = useEntitlement()
   const qc = useQueryClient()
+  // `q` is what the user typed; `debouncedQ` (300 ms later) is what is sent
+  // to the server, so typing does not fire a request per keystroke.
   const [q, setQ]           = useState('')
-  // What the user has typed vs. what has been asked of the server. Firing a
-  // request per keystroke made the list flicker and hammered the API for
-  // results nobody read.
   const [debouncedQ, setDebouncedQ] = useState('')
   const [county, setCounty] = useState('')
   const [maxWeight, setMaxWeight] = useState('')
@@ -40,24 +41,18 @@ export default function FightersList() {
     return () => clearTimeout(t)
   }, [q])
 
-  // Whether this role could ever add a fighter, separate from whether the
-  // account is currently entitled to. Keeping them apart is what lets the UI
-  // show a coach a locked button (which they can act on by subscribing) while
-  // showing a fighter nothing at all (which they cannot).
+  // roleCanAdd: could this role ever add a fighter? canAdd: can it right now
+  // (subscription active)? A coach without a subscription sees a locked
+  // button; a fighter sees nothing.
   const roleCanAdd = ['coach', 'admin'].includes(user?.role)
   const canAdd = roleCanAdd && canWrite
 
-  // Seed the new-fighter form from the account's own answer where there is one
-  // to use. 'undisclosed' deliberately does not carry over: the profile's
-  // gender decides which division a fighter is matched in, so it has to be
-  // stated rather than inherited from a refusal to state it.
+  // Pre-fill the new-fighter gender from the account's answer, unless it was
+  // 'undisclosed' (a fighter profile must state one for matchmaking).
   const defaultGender = FIGHTER_GENDER_OPTIONS
     .some(o => o.value === user?.gender) ? user.gender : ''
 
-  // A coach sees only their own gyms here (the API filters by coach), so this
-  // doubles as the list they are allowed to assign into.
-  // ?mine=1 — the plain listing now returns every gym, and a coach may only
-  // assign fighters into their own.
+  // The coach's own gyms: the only ones they may put a new fighter into.
   const { data: gymsData } = useQuery({
     queryKey: ['gyms', 'mine'],
     queryFn: () => apiFetch('/api/gyms?mine=1'),
@@ -96,7 +91,7 @@ export default function FightersList() {
     e.preventDefault()
     const fd = new FormData(e.target)
     const desc = fd.get('description').trim()
-    if (wordCount(desc) > 200) { toast.error('Description must be 200 words or fewer.'); return }
+    if (wordCount(desc) > MAX_BIO_WORDS) { toast.error(`Description must be ${MAX_BIO_WORDS} words or fewer.`); return }
     addMutation.mutate({
       name:          fd.get('name').trim(),
       date_of_birth: fd.get('date_of_birth') || null,
@@ -110,10 +105,8 @@ export default function FightersList() {
     setDescWords(0)
   }
 
-  // Deliberately no early `return <Spinner />` here. Returning a spinner for
-  // the whole page unmounted the toolbar — and with it the search input — so
-  // every keystroke destroyed the field the user was typing into and the
-  // caret jumped out. Only the results area below swaps to a spinner now.
+  // No early `return <Spinner />`: that would unmount the search box while
+  // the user is typing. Only the results area below shows a spinner.
   const fighters = data?.fighters ?? []
 
   return (
@@ -177,9 +170,7 @@ export default function FightersList() {
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Gender</label>
-                {/* Required: matchmaking will not pair fighters of
-                    different genders, and a fighter with none recorded simply
-                    never gets that protection. */}
+                {/* Required so matchmaking can keep pairings same-sex. */}
                 <select name="gender" className="select-input" required
                   defaultValue={defaultGender}>
                   <option value="" disabled>Select…</option>
@@ -199,9 +190,8 @@ export default function FightersList() {
             {myGyms.length > 0 && (
               <div className="form-group">
                 <label className="form-label">Gym</label>
-                {/* Defaulting to the coach's first gym is deliberate: a fighter
-                    with no gym is one this coach cannot edit afterwards, since
-                    that permission is derived from gym ownership. */}
+                {/* Defaults to the coach's first gym: a coach can only edit
+                    fighters in their own gyms. */}
                 <select name="gym_id" className="select-input" defaultValue={myGyms[0].id}>
                   {myGyms.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                   <option value="">No gym (unattached)</option>
@@ -214,12 +204,12 @@ export default function FightersList() {
                 onInput={e => setDescWords(wordCount(e.target.value))}
                 style={{ resize: 'vertical' }} />
               <div style={{ fontSize: 11, marginTop: 3,
-                color: descWords > 200 ? 'var(--danger)' : 'var(--muted)' }}>
-                {descWords} / 200 words
+                color: descWords > MAX_BIO_WORDS ? 'var(--danger)' : 'var(--muted)' }}>
+                {descWords} / {MAX_BIO_WORDS} words
               </div>
             </div>
             <button type="submit" className="btn btn-primary btn-sm"
-              disabled={addMutation.isPending || descWords > 200}>
+              disabled={addMutation.isPending || descWords > MAX_BIO_WORDS}>
               {addMutation.isPending ? 'Adding…' : 'Add Fighter'}
             </button>
           </form>
@@ -251,15 +241,9 @@ export default function FightersList() {
               <div className="fighter-info">
                 <div className="fighter-name" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {f.name}
-                  {f.rank && (
-                    <span className={`rank-pill${f.rank <= 3 ? ' rank-pill--podium' : ''}`}
-                      title={`Ranked #${f.rank} in ${SPORT_LABEL[sport] ?? sport}`}>
-                      #{f.rank}
-                    </span>
-                  )}
+                  <RankPill rank={f.rank} sport={sport} />
                   {canAdd && (
-                    // Spelled "ID 12", not "#12": a bare hash next to a name
-                    // reads as a ranking, which is exactly what it is not.
+                    // "ID 12", not "#12", so it is not mistaken for a rank.
                     <span className="id-pill"
                       title="Fighter ID — share with the fighter to link their account"
                       onClick={e => e.stopPropagation()}>
@@ -274,7 +258,7 @@ export default function FightersList() {
                 </div>
               </div>
               <span className="record-badge">
-                {f.record_hidden ? '–' : `${f.wins ?? 0}W ${f.losses ?? 0}L ${f.draws ?? 0}D`}
+                {recordLabel(f)}
               </span>
             </div>
           ))
