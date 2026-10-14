@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Files that run inside the Linux container must keep LF endings regardless of
+# core.autocrlf. With CRLF the kernel reads the shebang as "/bin/sh\r" and the
+# container fails at startup with a bare "no such file or directory".
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf

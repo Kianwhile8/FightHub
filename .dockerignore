@@ -1,0 +1,35 @@
+# Keep secrets, local state and build junk out of the image and build context.
+.env
+.env.*
+!.env.example
+.venv/
+.venv.broken-3.14/
+Lib/
+Include/
+Scripts/
+pyvenv.cfg
+__pycache__/
+**/__pycache__/
+*.pyc
+.git/
+.gitignore
+.claude/
+frontend/node_modules/
+frontend/dist/
+node_modules/
+uploads/
+data/
+*.db
+*.sqlite
+*.sqlite3
+README.md
+DEPLOY.md
+app_v1.py
+auth.py
+fighter_database.py
+matchmaker.py
+serve.py
+seed_demo.py
+migration/
+# frontend/index.html is Vite's entry point — the build needs it.
+frontend/index_v1.html

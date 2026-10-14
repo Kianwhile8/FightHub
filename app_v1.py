@@ -12,15 +12,39 @@ all responses are json errors reutnr with appropriate status code
 
 
 from flask import Flask, jsonify, request, send_from_directory, session
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from fighter_database import FighterDB
 from auth import authDB
+from dotenv import load_dotenv
 import os
 import functools
 
-
+load_dotenv()
 
 app = Flask(__name__, static_folder="frontend", static_url_path="")
-app.secret_key = os.environ.get("FIGHTHUB_SECRET", "ABC123")
+
+_secret = os.environ.get("SECRET_KEY")
+if not _secret:
+    raise RuntimeError("SECRET_KEY environment variable is not set. See .env.example.")
+app.secret_key = _secret
+
+app.config.update(
+    SESSION_COOKIE_SECURE=os.environ.get("FLASK_DEBUG", "0") != "1",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=28800,
+    WTF_CSRF_CHECK_DEFAULT=False,
+)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri=os.environ.get("RATELIMIT_STORAGE_URL", "memory://"),
+)
+csrf = CSRFProtect(app)
 
 
 DB_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -125,10 +149,15 @@ def index():
     return send_from_directory("frontend", "index.html")
 
 
+@app.route("/api/csrf-token", methods=["GET"])
+def csrf_token():
+    return jsonify({"token": generate_csrf()})
+
 
 ''' auth endpoints'''
 
 @app.route("/api/auth/register", methods = ["POST"])
+@limiter.limit("10 per minute")
 def register():
     data,error = require_json ("email", "password", "role")
     if error:
@@ -149,6 +178,7 @@ def register():
     
 
 @app.route("/api/auth/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     data, error = require_json("email", "password")
     if error:
@@ -727,4 +757,4 @@ def delete_event_registration(event_id, reg_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", port=5000)

@@ -35,3 +35,10 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Stray virtualenv created in the project root (Lib/Scripts/Include/pyvenv.cfg)
+/Lib/
+/Scripts/
+/Include/
+/pyvenv.cfg
+.venv.broken-3.14/
